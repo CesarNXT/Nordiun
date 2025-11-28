@@ -92,7 +92,7 @@ export default function CadastroPage() {
   const [verifySeconds, setVerifySeconds] = useState(0);
 
   useEffect(() => {
-    if (!existingMode && step === 7 && verifySeconds <= 0 && verifyRequested) {
+    if (step === 7 && verifySeconds <= 0 && verifyRequested) {
       setTimeout(() => {
         setVerifyRequested(false);
         setVerifyCode("");
@@ -100,7 +100,7 @@ export default function CadastroPage() {
         setStep(1);
       }, 0);
     }
-  }, [verifySeconds, step, existingMode, verifyRequested]);
+  }, [verifySeconds, step, verifyRequested]);
 
   type InfoKeys = "itRate3h" | "itAdditionalHour" | "itDaily" | "itMileage" | "trackerMileage";
   const [info, setInfo] = useState<Record<InfoKeys, boolean>>({
@@ -272,12 +272,12 @@ function normalizeFone(raw: string) {
         setStep(8);
         return;
       }
-      if (found.found && found.id) {
-        await prefillExisting(found.id);
-        setExistingMode(true);
+      if (found.found) {
+        await requestVerification(`${ddi}${dddDigits}${f8}`);
+        setStep(7);
+        return;
       }
-      await requestVerification(`${ddi}${dddDigits}${f8}`);
-      setStep(7);
+      setStep(2);
       return;
     }
     if (!national) {
@@ -298,12 +298,12 @@ function normalizeFone(raw: string) {
       setStep(8);
       return;
     }
-    if (found.found && found.id) {
-      await prefillExisting(found.id);
-      setExistingMode(true);
+    if (found.found) {
+      await requestVerification(`${ddi}${national}`);
+      setStep(7);
+      return;
     }
-    await requestVerification(`${ddi}${national}`);
-    setStep(7);
+    setStep(2);
   }
 
   async function requestVerification(number: string) {
@@ -589,7 +589,7 @@ function normalizeFone(raw: string) {
           </div>
         )}
 
-        {!existingMode && step === 7 && (
+        {step === 7 && (
           <div className="mt-4 space-y-3">
             <div className="text-sm text-slate-700">Digite o código enviado via WhatsApp. Expira em {verifySeconds}s.</div>
             <input className="w-full border border-slate-300 rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="Código de 6 dígitos" inputMode="numeric" value={verifyCode} onChange={(e) => setVerifyCode(e.target.value)} />

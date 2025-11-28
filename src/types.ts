@@ -33,7 +33,18 @@ export type Empresa = {
   paymentDate?: string;
   trackerEnabled?: boolean;
   valores?: {
+    itRate1h?: number;
+    itRate2h?: number;
     itRate3h?: number;
+    itRate4h?: number;
+    itRate5h?: number;
+    itRate6h?: number;
+    itRate7h?: number;
+    itRate8h?: number;
+    itRate9h?: number;
+    itRate10h?: number;
+    itRate11h?: number;
+    itRate12h?: number;
     itHalfDaily?: number;
     itDaily?: number;
     itAdditionalHour?: number;
@@ -41,7 +52,18 @@ export type Empresa = {
     trackerInstallationRate?: number;
     itToleranceMinutes?: number;
   };
+  itRate1h?: number;
+  itRate2h?: number;
   itRate3h?: number;
+  itRate4h?: number;
+  itRate5h?: number;
+  itRate6h?: number;
+  itRate7h?: number;
+  itRate8h?: number;
+  itRate9h?: number;
+  itRate10h?: number;
+  itRate11h?: number;
+  itRate12h?: number;
   itHalfDaily?: number;
   itDaily?: number;
   itAdditionalHour?: number;

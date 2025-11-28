@@ -39,14 +39,21 @@ export default function EmpresasPage() {
   const fileInputDetailRef = useRef<HTMLInputElement | null>(null);
   const [detailDocs, setDetailDocs] = useState<{ id: string; nome: string; url: string; path: string }[]>([]);
   const [newDocs, setNewDocs] = useState<{ nome: string; url: string; path: string }[]>([]);
+  const [editingDocIndex, setEditingDocIndex] = useState<number | null>(null);
+  const [editingDocName, setEditingDocName] = useState<string>("");
+  const [editingDocFile, setEditingDocFile] = useState<File | null>(null);
   const [money, setMoney] = useState<Record<string, string>>({
+    itRate1h: "",
+    itRate2h: "",
     trackerInstallationRate: "",
     itRate3h: "",
+    itRate4h: "",
     itHalfDaily: "",
     itDaily: "",
     itMileage: "",
     itAdditionalHour: "",
   });
+  const [visibleHours, setVisibleHours] = useState<number[]>([1, 2, 3]);
 
   function formatCurrency(n?: number): string {
     if (typeof n !== "number" || isNaN(n)) return "";
@@ -64,8 +71,11 @@ export default function EmpresasPage() {
   function sanitizeMoney(e: Empresa): Empresa {
     const r: Empresa = { ...e };
     const fix = (x?: number) => (typeof x === "number" && !isFinite(x)) ? undefined : x;
+    r.itRate1h = fix(e.itRate1h);
+    r.itRate2h = fix(e.itRate2h);
     r.trackerInstallationRate = fix(e.trackerInstallationRate);
     r.itRate3h = fix(e.itRate3h);
+    r.itRate4h = fix(e.itRate4h);
     r.itHalfDaily = fix(e.itHalfDaily);
     r.itDaily = fix(e.itDaily);
     r.itMileage = fix(e.itMileage);
@@ -77,16 +87,38 @@ export default function EmpresasPage() {
   function buildPayloadEmpresa(e: Empresa & { id?: string }, extra?: Record<string, unknown>): Empresa {
     const base: Partial<Empresa> & Record<string, unknown> = { ...e, ...(extra || {}) };
     const valores = {
+      itRate1h: e.itRate1h,
+      itRate2h: e.itRate2h,
       trackerInstallationRate: e.trackerInstallationRate,
       itRate3h: e.itRate3h,
+      itRate4h: e.itRate4h,
+      itRate5h: e.itRate5h,
+      itRate6h: e.itRate6h,
+      itRate7h: e.itRate7h,
+      itRate8h: e.itRate8h,
+      itRate9h: e.itRate9h,
+      itRate10h: e.itRate10h,
+      itRate11h: e.itRate11h,
+      itRate12h: e.itRate12h,
       itHalfDaily: e.itHalfDaily,
       itDaily: e.itDaily,
       itMileage: e.itMileage,
       itAdditionalHour: e.itAdditionalHour,
       itToleranceMinutes: e.itToleranceMinutes,
     };
+    delete base.itRate1h;
+    delete base.itRate2h;
     delete base.trackerInstallationRate;
     delete base.itRate3h;
+    delete base.itRate4h;
+    delete base.itRate5h;
+    delete base.itRate6h;
+    delete base.itRate7h;
+    delete base.itRate8h;
+    delete base.itRate9h;
+    delete base.itRate10h;
+    delete base.itRate11h;
+    delete base.itRate12h;
     delete base.itHalfDaily;
     delete base.itDaily;
     delete base.itMileage;
@@ -154,8 +186,19 @@ export default function EmpresasPage() {
         const raw = d.data() as Empresa;
         const v = raw.valores;
         if (v) {
+          raw.itRate1h = v.itRate1h;
+          raw.itRate2h = v.itRate2h;
           raw.trackerInstallationRate = v.trackerInstallationRate;
           raw.itRate3h = v.itRate3h;
+          raw.itRate4h = v.itRate4h;
+          raw.itRate5h = v.itRate5h;
+          raw.itRate6h = v.itRate6h;
+          raw.itRate7h = v.itRate7h;
+          raw.itRate8h = v.itRate8h;
+          raw.itRate9h = v.itRate9h;
+          raw.itRate10h = v.itRate10h;
+          raw.itRate11h = v.itRate11h;
+          raw.itRate12h = v.itRate12h;
           raw.itHalfDaily = v.itHalfDaily;
           raw.itDaily = v.itDaily;
           raw.itMileage = v.itMileage;
@@ -169,6 +212,8 @@ export default function EmpresasPage() {
     });
     return () => unsub();
   }, []);
+
+  // visibleHours é inicializado ao abrir o modal de Valores
 
   async function create() {
     if (!db) return;
@@ -238,6 +283,58 @@ export default function EmpresasPage() {
       setDocName(""); setDocFile(null);
       if (fileInputNewRef.current) fileInputNewRef.current.value = "";
     }
+  }
+
+  async function saveEditDoc() {
+    const target = modalTarget === "detail" ? "detail" : "new";
+    if (editingDocIndex == null) return;
+    const current = target === "detail" ? detailDocs[editingDocIndex] : newDocs[editingDocIndex];
+    const nextName = (editingDocName || current?.nome || "").trim();
+    if (!current) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
+    if (target === "detail") {
+      if (!detailForm || !db) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
+      let url = current.url;
+      let path = current.path;
+      if (editingDocFile && storage) {
+        try {
+          const baseName = (detailForm.name || "empresa").replace(/[^a-zA-Z0-9_-]/g, "_");
+          const safeName = (nextName || editingDocFile.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+          const newPath = `empresas/${baseName}/${Date.now()}-${safeName}`;
+          const r = ref(storage, newPath);
+          await uploadBytes(r, editingDocFile);
+          const newUrl = await getDownloadURL(r);
+          url = newUrl;
+          path = newPath;
+          if (current.path) { try { const old = ref(storage, current.path); await deleteObject(old); } catch {} }
+        } catch {}
+      }
+      try {
+        const dref = doc(db, `empresas/${detailForm.id}/documentos/${current.id}`);
+        await updateDoc(dref, { nome: nextName || current.nome, url, path, updatedAt: Date.now() });
+        setDetailDocs((prev) => prev.map((d, i) => i === editingDocIndex ? { ...d, nome: nextName || d.nome, url, path } : d));
+      } catch {}
+    } else {
+      let url = current.url;
+      let path = current.path;
+      if (editingDocFile && storage) {
+        try {
+          const baseName = (form.name || "empresa").replace(/[^a-zA-Z0-9_-]/g, "_");
+          const safeName = (nextName || editingDocFile.name).replace(/[^a-zA-Z0-9._-]/g, "_");
+          const newPath = `empresas/${baseName}/${Date.now()}-${safeName}`;
+          const r = ref(storage, newPath);
+          await uploadBytes(r, editingDocFile);
+          const newUrl = await getDownloadURL(r);
+          url = newUrl;
+          path = newPath;
+          if (current.path) { try { const old = ref(storage, current.path); await deleteObject(old); } catch {} }
+        } catch {}
+      }
+      setNewDocs((prev) => prev.map((d, i) => i === editingDocIndex ? { ...d, nome: nextName || d.nome, url, path } : d));
+    }
+    setEditingDocIndex(null);
+    setEditingDocName("");
+    setEditingDocFile(null);
+    if (fileInputDetailRef.current) fileInputDetailRef.current.value = "";
   }
 
   // removido: usar addDocumentoTo("new"|"detail")
@@ -341,21 +438,35 @@ export default function EmpresasPage() {
             {!!(((modalTarget === "detail" ? detailDocs : newDocs) || []).length) && (
               <div className="space-y-1 max-h-64 overflow-auto">
                 {((modalTarget === "detail" ? detailDocs : newDocs) || []).map((d, i) => (
-                  <div key={i} className="flex items-center justify-between border border-slate-200 rounded px-3 py-2">
-                    <div className="text-sm text-slate-800 truncate mr-2">{d.nome}</div>
-                    <div className="flex items-center gap-2">
-                      <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">Abrir</a>
-                      <button className="text-red-600 text-sm hover:underline" onClick={async () => {
-                        try { if (storage) { const r = ref(storage, d.path || d.url); await deleteObject(r); } } catch {}
-                        if (modalTarget === "detail" && detailForm && db) {
-                          const delId = (detailDocs[i] && detailDocs[i].id) ? detailDocs[i].id : undefined;
-                          if (delId) await deleteDoc(doc(db, `empresas/${detailForm.id}/documentos/${delId}`));
-                          setDetailDocs((prev) => prev.filter((_, idx) => idx !== i));
-                        } else {
-                          setNewDocs((prev) => prev.filter((_, idx) => idx !== i));
-                        }
-                      }}>Excluir</button>
+                  <div key={i} className="border border-slate-200 rounded px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-slate-800 truncate mr-2">{d.nome}</div>
+                      <div className="flex items-center gap-2">
+                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">Abrir</a>
+                        <button className="text-slate-700 text-sm hover:underline" onClick={() => { setEditingDocIndex(i); setEditingDocName(d.nome); setEditingDocFile(null); }}>Editar</button>
+                        <button className="text-red-600 text-sm hover:underline" onClick={async () => {
+                          try { if (storage) { const r = ref(storage, d.path || d.url); await deleteObject(r); } } catch {}
+                          if (modalTarget === "detail" && detailForm && db) {
+                            const delId = (detailDocs[i] && detailDocs[i].id) ? detailDocs[i].id : undefined;
+                            if (delId) await deleteDoc(doc(db, `empresas/${detailForm.id}/documentos/${delId}`));
+                            setDetailDocs((prev) => prev.filter((_, idx) => idx !== i));
+                          } else {
+                            setNewDocs((prev) => prev.filter((_, idx) => idx !== i));
+                          }
+                          if (editingDocIndex === i) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); }
+                        }}>Excluir</button>
+                      </div>
                     </div>
+                    {editingDocIndex === i && (
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Nome do documento" value={editingDocName} onChange={(e) => setEditingDocName(e.target.value)} />
+                        <input className="border border-slate-300 rounded-md px-3 py-2 sm:col-span-2" type="file" onChange={(e) => setEditingDocFile(e.target.files?.[0] || null)} />
+                        <div className="sm:col-span-3 flex justify-end gap-2">
+                          <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); }}>Cancelar</button>
+                          <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={saveEditDoc}>Salvar alterações</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -380,9 +491,17 @@ export default function EmpresasPage() {
           <div className="bg-white w-full max-w-xl rounded-lg p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-slate-900">Responsáveis</div>
             {(((modalTarget === "detail" ? detailForm?.responsaveis : form.responsaveis) || [])).map((r, idx) => (
-              <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Responsável" value={r.nome} onChange={(e) => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) }); }} />
                 <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Número do responsável" value={r.numero} onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
+                <div className="flex items-center">
+                  <button type="button" className="w-full px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700" onClick={() => {
+                    const num = String(r.numero || "").replace(/\D/g, "");
+                    if (!num) return;
+                    const url = `https://wa.me/55${num}`;
+                    window.open(url, "_blank", "noopener,noreferrer");
+                  }}>Chamar no WhatsApp</button>
+                </div>
               </div>
             ))}
             <div className="flex justify-between">
@@ -407,12 +526,30 @@ export default function EmpresasPage() {
             <div className="text-lg font-bold text-slate-900">Valores</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1"><div className="text-xs text-slate-600">Rastreador veicular</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.trackerInstallationRate) : money.trackerInstallationRate} onChange={modalTarget === "detail" ? handleCurrencyDetail("trackerInstallationRate") : handleCurrency("trackerInstallationRate")} /></div></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">3h</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itRate3h) : money.itRate3h} onChange={modalTarget === "detail" ? handleCurrencyDetail("itRate3h") : handleCurrency("itRate3h")} /></div></div>
+              {visibleHours.map((h) => {
+                const key = `itRate${h}h` as keyof Empresa;
+                const label = `${h}h`;
+                const source: Partial<Empresa> = modalTarget === "detail" ? (detailForm || {}) : form;
+                const display = modalTarget === "detail" ? formatCurrency(source[key] as number | undefined) : money[key as string];
+                const onChange = modalTarget === "detail" ? handleCurrencyDetail(key) : handleCurrency(key);
+                return (
+                  <div key={h} className="space-y-1"><div className="text-xs text-slate-600">{label}</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={display} onChange={onChange} /></div></div>
+                );
+              })}
               <div className="space-y-1"><div className="text-xs text-slate-600">Meia diária</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itHalfDaily) : money.itHalfDaily} onChange={modalTarget === "detail" ? handleCurrencyDetail("itHalfDaily") : handleCurrency("itHalfDaily")} /></div></div>
               <div className="space-y-1"><div className="text-xs text-slate-600">Diária</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itDaily) : money.itDaily} onChange={modalTarget === "detail" ? handleCurrencyDetail("itDaily") : handleCurrency("itDaily")} /></div></div>
               <div className="space-y-1"><div className="text-xs text-slate-600">Deslocamento</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itMileage) : money.itMileage} onChange={modalTarget === "detail" ? handleCurrencyDetail("itMileage") : handleCurrency("itMileage")} /></div></div>
               <div className="space-y-1"><div className="text-xs text-slate-600">Hora adicional</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itAdditionalHour) : money.itAdditionalHour} onChange={modalTarget === "detail" ? handleCurrencyDetail("itAdditionalHour") : handleCurrency("itAdditionalHour")} /></div></div>
               <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Tolerância (minutos) para adicional</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={(modalTarget === "detail" ? (detailForm?.itToleranceMinutes ?? "") : (form.itToleranceMinutes ?? "")) as unknown as string} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, itToleranceMinutes: isFinite(n) ? n : undefined })); else setForm((prev) => ({ ...prev, itToleranceMinutes: isFinite(n) ? n : undefined })); }} /></div>
+            </div>
+            <div className="flex justify-between">
+              <button type="button" className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => {
+                const nextHour = Math.max(...visibleHours) + 1;
+                if (nextHour <= 12) setVisibleHours((prev) => [...prev, nextHour]);
+              }}>+ Adicionar hora</button>
+              <button type="button" className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => {
+                if (visibleHours.length > 1) setVisibleHours((prev) => prev.slice(0, -1));
+              }}>Remover última</button>
             </div>
             <div className="flex justify-end"><button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
               if (modalTarget === "detail") {
@@ -444,7 +581,7 @@ export default function EmpresasPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={async () => { setModalTarget("detail"); if (detailForm) await loadDetailDocs(detailForm.id); setOpenDocs(true); }}>Documentos</button>
               <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setOpenResp(true); }}>Responsáveis</button>
-              <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setOpenVals(true); }}>Valores</button>
+              <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setVisibleHours(getHoursFrom(detailForm || {})); setOpenVals(true); }}>Valores</button>
             </div>
             <div className="flex gap-2 pt-2"><button className="flex-1 rounded-md py-2 bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
               if (!db) return;

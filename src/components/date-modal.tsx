@@ -136,7 +136,12 @@ export function DateModal({
                   className={`h-10 rounded-md border border-slate-300 text-slate-900 ${
                     isSelected ? "bg-blue-600 text-white border-blue-600" : "bg-white"
                   }`}
-                  onClick={() => setSelected(cell)}
+                  onClick={() => {
+                    const iso = toISO(cell);
+                    setSelected(cell);
+                    onSave(iso);
+                    onClose();
+                  }}
                 >
                   {cell.getDate()}
                 </button>
@@ -165,4 +170,3 @@ export function DateModal({
     </div>
   );
 }
-

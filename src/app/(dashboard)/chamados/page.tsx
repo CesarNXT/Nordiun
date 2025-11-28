@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { DateModal } from "@/components/date-modal";
 import { db, storage } from "@/lib/firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, type CollectionReference, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, FieldValue } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { Play } from "lucide-react";
 
 type EmpresaLite = { id: string; name: string; trackerEnabled?: boolean; valores?: { itRate3h?: number; itHalfDaily?: number; itDaily?: number; itAdditionalHour?: number; itMileage?: number; trackerInstallationRate?: number; itToleranceMinutes?: number }; responsaveis?: { nome: string; numero: string }[] };
-type TecnicoLite = { id: string; name: string; status?: "Novo" | "Ativo" | "Cancelado" | "Ajudante"; supervisorId?: string; category?: "Rastreador" | "Informatica"; categories?: ("Rastreador" | "Informatica")[]; itRate3h?: number; itAdditionalHour?: number; itDaily?: number; itMileage?: number; trackerMileage?: number; trackerInstallationRate?: number };
-type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string };
+type TecnicoLite = { id: string; name: string; cidade?: string; estado?: string; status?: "Novo" | "Ativo" | "Cancelado" | "Ajudante"; supervisorId?: string; category?: "Rastreador" | "Informatica"; categories?: ("Rastreador" | "Informatica")[]; itRate3h?: number; itAdditionalHour?: number; itDaily?: number; itMileage?: number; trackerMileage?: number; trackerInstallationRate?: number };
+type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; workSessions?: { startIso: string; endIso: string }[]; paymentReceiptsTechnician?: { url: string; path: string }[]; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string };
 
 function toDateVal(x: number | string | Timestamp | FieldValue | undefined | null): Date {
   if (!x) return new Date(0);
@@ -42,6 +44,7 @@ export default function ChamadosPage() {
   const [openAddress, setOpenAddress] = useState(false);
   const [addrOpen, setAddrOpen] = useState(false);
   const [addrFocused, setAddrFocused] = useState(false);
+  const [addrLocked, setAddrLocked] = useState(false);
   const [addrOptions, setAddrOptions] = useState<{ label: string; lat?: string; lon?: string; placeId?: string; from?: "places" | "osm" }[]>([]);
   const [placeToken] = useState(() => Math.random().toString(36).slice(2));
   const [callCategory, setCallCategory] = useState<"Informatica" | "Rastreador">("Informatica");
@@ -70,6 +73,12 @@ export default function ChamadosPage() {
   }, []);
   const [openServiceType, setOpenServiceType] = useState(false);
   const [openWorkTime, setOpenWorkTime] = useState(false);
+  const [openTimeLog, setOpenTimeLog] = useState(false);
+  const [openAddSession, setOpenAddSession] = useState(false);
+  const [workSessions, setWorkSessions] = useState<{ startIso: string; endIso: string }[]>([]);
+  const [sessionDate, setSessionDate] = useState("");
+  const [sessionStart, setSessionStart] = useState("");
+  const [sessionEnd, setSessionEnd] = useState("");
   const [qEmpresa, setQEmpresa] = useState("");
   const [qTecnico, setQTecnico] = useState("");
   const [qContact, setQContact] = useState("");
@@ -82,9 +91,7 @@ export default function ChamadosPage() {
   const [hasKm, setHasKm] = useState(false);
   const [workStart, setWorkStart] = useState("");
   const [workEnd, setWorkEnd] = useState("");
-  const [paymentReceiptTechnicianUrl, setPaymentReceiptTechnicianUrl] = useState("");
-  const [paymentReceiptTechnicianPath, setPaymentReceiptTechnicianPath] = useState("");
-  const [paymentReceiptTechnicianFile, setPaymentReceiptTechnicianFile] = useState<File | null>(null);
+  const [paymentReceipts, setPaymentReceipts] = useState<{ url: string; path: string }[]>([]);
   const [paymentDateCompany, setPaymentDateCompany] = useState("");
   const [paymentDateTechnician, setPaymentDateTechnician] = useState("");
   const [paymentStatusCompany, setPaymentStatusCompany] = useState<Chamado["paymentStatusCompany"]>("A pagar");
@@ -124,6 +131,8 @@ export default function ChamadosPage() {
         return {
           id: d.id,
           name: (data.name || "").toUpperCase(),
+          cidade: data.cidade,
+          estado: data.estado,
           status: data.status,
           supervisorId: data.supervisorId,
           category: data.category,
@@ -183,6 +192,14 @@ export default function ChamadosPage() {
   }
 
   function formatTimeBr(t?: string) { return t || ""; }
+  function formatDateBr(d?: string) {
+    if (!d) return "";
+    const p = d.split("-");
+    if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+    return d;
+  }
+  function isPdf(u: string) { return /\.pdf(\?|$)/i.test(u); }
+  
   function normalizeHHMMInput(raw: string): string {
     const digits = raw.replace(/[^0-9]/g, "").slice(0, 4);
     const hh = digits.slice(0, 2);
@@ -201,6 +218,37 @@ export default function ChamadosPage() {
     const hh = String(Math.floor(mins / 60)).padStart(2, "0");
     const mm = String(mins % 60).padStart(2, "0");
     return `${hh}:${mm}`;
+  }
+
+  function totalDurationMs(sessions: { startIso: string; endIso: string }[]): number {
+    return sessions.reduce((acc, s) => {
+      const st = new Date(s.startIso).getTime();
+      const en = new Date(s.endIso).getTime();
+      const d = Math.max(0, en - st);
+      return acc + d;
+    }, 0);
+  }
+
+  function formatDuration(ms: number): string {
+    const sec = Math.floor(ms / 1000);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+
+  function addManualSession() {
+    if (!sessionDate || !isValidHHMM(sessionStart) || !isValidHHMM(sessionEnd)) return;
+    const startIso = new Date(`${sessionDate}T${sessionStart}:00`).toISOString();
+    const endIso = new Date(`${sessionDate}T${sessionEnd}:00`).toISOString();
+    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) return;
+    setWorkSessions((prev) => [...prev, { startIso, endIso }]);
+    setOpenAddSession(false);
+    setSessionDate("");
+    setSessionStart("");
+    setSessionEnd("");
   }
 
   
@@ -242,6 +290,7 @@ export default function ChamadosPage() {
       hasKm,
       workStart: workStart || undefined,
       workEnd: workEnd || undefined,
+      workSessions: workSessions.length ? workSessions : undefined,
       valorEmpresa: valorEmpresa ? Number(valorEmpresa.replace(/,/g, ".")) : undefined,
       valorTecnico: valorTecnico ? Number(valorTecnico.replace(/,/g, ".")) : undefined,
       kmEmpresa: kmEmpresa ? Number(kmEmpresa.replace(/,/g, ".")) : undefined,
@@ -264,50 +313,6 @@ export default function ChamadosPage() {
     setOpen(false);
   }
 
-  async function duplicateCurrent() {
-    if (!db) return;
-    const col = collection(db, "chamados") as CollectionReference<Chamado>;
-    const payload: Partial<Chamado> = {
-      empresaId,
-      tecnicoId,
-      status,
-      name,
-      callNumber,
-      endereco,
-      cep,
-      rua,
-      numero,
-      complemento,
-      bairro,
-      cidade,
-      estado,
-      contact,
-      contactNumber,
-      appointmentDate: appointmentDate || undefined,
-      appointmentTime: appointmentTime || undefined,
-      category: callCategory,
-      serviceType,
-      units: Number(units || 1),
-      valorEmpresa: valorEmpresa ? Number(String(valorEmpresa).replace(/,/g, ".")) : undefined,
-      valorTecnico: valorTecnico ? Number(String(valorTecnico).replace(/,/g, ".")) : undefined,
-      hasKm,
-      kmEmpresa: kmEmpresa ? Number(String(kmEmpresa).replace(/,/g, ".")) : undefined,
-      kmTecnico: kmTecnico ? Number(String(kmTecnico).replace(/,/g, ".")) : undefined,
-      kmValorEmpresa: kmValorEmpresa ? Number(String(kmValorEmpresa).replace(/,/g, ".")) : undefined,
-      kmValorTecnico: kmValorTecnico ? Number(String(kmValorTecnico).replace(/,/g, ".")) : undefined,
-      paymentDateCompany: paymentDateCompany || undefined,
-      paymentDateTechnician: paymentDateTechnician || undefined,
-      paymentStatusCompany,
-      paymentStatusTechnician,
-      workStart: workStart || undefined,
-      workEnd: workEnd || undefined,
-      createdAt: serverTimestamp(),
-    };
-    const clean = Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== undefined)) as Chamado;
-    const newDoc = await addDoc(col, clean);
-    setEditingId(newDoc.id);
-    setOpen(true);
-  }
 
   const mapEmpresa = Object.fromEntries(empresas.map((e) => [e.id, e.name]));
   const mapTecnico = Object.fromEntries(tecnicos.map((t) => [t.id, t.name]));
@@ -333,6 +338,7 @@ export default function ChamadosPage() {
   }, [cep, numero]);
 
   useEffect(() => {
+    if (addrLocked) { return; }
     const q = (endereco || "").trim();
     const full = [q, cep, "Brasil"].filter(Boolean).join(" ");
     if (q.length < 3 && !cep) {
@@ -374,10 +380,10 @@ export default function ChamadosPage() {
         } catch {}
       }
       setAddrOptions(opts);
-      setAddrOpen(addrFocused && opts.length > 0);
+      setAddrOpen(addrFocused && !addrLocked && opts.length > 0);
     }, 350);
     return () => clearTimeout(t);
-  }, [endereco, cep, addrFocused]);
+  }, [endereco, cep, addrFocused, addrLocked]);
 
   function statusClasses(s: Chamado["status"]) {
     if (s === "Agendado") return "border-l-4 border-blue-500 bg-blue-50";
@@ -437,6 +443,7 @@ export default function ChamadosPage() {
     setHasKm(false);
     setWorkStart("");
     setWorkEnd("");
+    setWorkSessions([]);
     setError("");
   }
 
@@ -475,8 +482,9 @@ export default function ChamadosPage() {
     setKmValorTecnico(c.kmValorTecnico != null ? String(c.kmValorTecnico) : "");
     setWorkStart(c.workStart || "");
     setWorkEnd(c.workEnd || "");
-    setPaymentReceiptTechnicianUrl(c.paymentReceiptTechnicianUrl || "");
-    setPaymentReceiptTechnicianPath(c.paymentReceiptTechnicianPath || "");
+    setWorkSessions(Array.isArray(c.workSessions) ? c.workSessions : []);
+    const arr = Array.isArray(c.paymentReceiptsTechnician) ? c.paymentReceiptsTechnician : ((c.paymentReceiptTechnicianUrl) ? [{ url: c.paymentReceiptTechnicianUrl, path: c.paymentReceiptTechnicianPath || "" }] : []);
+    setPaymentReceipts(arr);
     setOpen(true);
   }
 
@@ -534,12 +542,14 @@ export default function ChamadosPage() {
                   <button type="button" className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setOpenAddress(true)}>Editar</button>
                 </div>
                 <div className="relative">
-                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={endereco} onFocus={() => { setAddrFocused(true); setAddrOpen(addrOptions.length > 0); }} onBlur={() => setTimeout(() => { setAddrFocused(false); setAddrOpen(false); }, 200)} onChange={(e) => setEndereco(e.target.value)} />
+                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={endereco} onFocus={() => { if (!addrLocked) { setAddrFocused(true); setAddrOpen(addrOptions.length > 0); } }} onBlur={() => setTimeout(() => { setAddrFocused(false); setAddrOpen(false); }, 200)} onChange={(e) => setEndereco(e.target.value)} />
                   {addrOpen && addrOptions.length > 0 && (
                     <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-auto border border-slate-200 bg-white rounded-md shadow z-[65]">
                       {addrOptions.map((o) => (
                         <button key={o.label} className="block w-full text-left px-3 py-2 hover:bg-slate-50" onMouseDown={(e) => e.preventDefault()} onClick={async () => {
                           setEndereco(o.label);
+                          setAddrLocked(true);
+                          setAddrFocused(false);
                           setAddrOpen(false);
                           if (o.from === "places" && o.placeId) {
                             try {
@@ -590,17 +600,25 @@ export default function ChamadosPage() {
                 <div className="text-xs text-slate-600">Status</div>
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={status} readOnly onClick={() => setOpenStatus(true)} />
               </div>
-              <div className="space-y-1">
-                <div className="text-xs text-slate-600">Data do atendimento</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={appointmentDate ? appointmentDate.substring(0,10) : "Selecione"} readOnly onClick={() => setOpenDate(true)} />
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">Data do atendimento</div>
+                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={formatDateBr(appointmentDate) || "Selecione"} readOnly onClick={() => setOpenDate(true)} />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">Hora do atendimento</div>
+                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={formatTimeBr(appointmentTime) || "Selecione"} readOnly onClick={() => setOpenTime(true)} />
+                </div>
               </div>
             <div className="space-y-1">
-              <div className="text-xs text-slate-600">Hora do atendimento</div>
-              <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={formatTimeBr(appointmentTime) || "Selecione"} readOnly onClick={() => setOpenTime(true)} />
-            </div>
-            <div className="space-y-1">
-              <div className="text-xs text-slate-600">Tempo de atendimento</div>
-              <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={durationHHMM(workStart, workEnd) || "Selecione"} readOnly onClick={() => setOpenWorkTime(true)} />
+              <div className="text-xs text-slate-600">Controle de tempo</div>
+              <div className="flex items-center gap-2">
+                <button type="button" className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-2" onClick={() => setOpenTimeLog(true)}>
+                  <Play className="w-4 h-4" />
+                  <span>Log de tempo</span>
+                </button>
+                <span className="text-sm text-slate-700">{formatDuration(totalDurationMs(workSessions)) || "0m 0s"}</span>
+              </div>
             </div>
             
             <div className="space-y-1">
@@ -627,9 +645,6 @@ export default function ChamadosPage() {
             )}
             <div className="flex justify-center gap-2 mt-3">
               {editingId && (
-                <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => duplicateCurrent()}>Duplicar</button>
-              )}
-              {editingId && (
                 <button className="px-3 py-2 rounded-md bg-red-600 text-white hover:bg-red-700" onClick={async () => { if (db && editingId) { await deleteDoc(doc(db, "chamados", editingId)); resetForm(); setOpen(false); } }}>Excluir</button>
               )}
               <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => { setOpen(false); setOpenCategory(true); }}>Voltar</button>
@@ -643,11 +658,11 @@ export default function ChamadosPage() {
 
       {openFinance && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenFinance(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-3xl max-h-[80vh] rounded-lg shadow-xl flex flex-col overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-slate-200">
               <div className="text-lg font-bold text-slate-900">Financeiro do atendimento</div>
             </div>
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[75vh] overflow-y-auto">
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 px-2 sm:px-4">
               <div className="space-y-1"><div className="text-xs text-slate-600">Valor que a empresa paga</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={valorEmpresa} onChange={setNum(setValorEmpresa)} /></div>
               <div className="space-y-1"><div className="text-xs text-slate-600">Valor pago ao técnico</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={valorTecnico} onChange={setNum(setValorTecnico)} /></div>
               <div className="space-y-1 sm:col-span-2">
@@ -701,7 +716,7 @@ export default function ChamadosPage() {
                 );
               })()}
             </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 px-2 sm:px-4">
                 <div className="space-y-1"><div className="text-xs text-slate-600">Data de pagamento (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={paymentDateCompany ? paymentDateCompany.substring(0,10) : ""} onChange={(e) => setPaymentDateCompany(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
                 <div className="space-y-1"><div className="text-xs text-slate-600">Data de pagamento (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={paymentDateTechnician ? paymentDateTechnician.substring(0,10) : ""} onChange={(e) => setPaymentDateTechnician(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
                 <div className="space-y-1"><div className="text-xs text-slate-600">Status pagamento (empresa)</div><select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={paymentStatusCompany} onChange={(e) => setPaymentStatusCompany(e.target.value as Chamado["paymentStatusCompany"]) }><option>A pagar</option><option>Pago</option><option>Pendente</option><option>Cancelado</option></select></div>
@@ -709,32 +724,52 @@ export default function ChamadosPage() {
                 <div className="sm:col-span-2 space-y-1">
                   <div className="text-xs text-slate-600">Comprovante de pagamento (técnico)</div>
                   <div className="flex items-center gap-2">
-                    <input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="file" onChange={(e) => setPaymentReceiptTechnicianFile(e.target.files?.[0] || null)} />
-                    <button className="px-3 py-2 rounded-md bg-indigo-600 text-white disabled:opacity-50" onClick={async () => {
+                    <input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="file" multiple onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length || !editingId || !storage) return;
+                      setUploadingReceipt(true);
                       try {
-                        if (!paymentReceiptTechnicianFile || !editingId || !storage) return;
-                        const path = `chamados/${editingId}/comprovantes/tecnico-${Date.now()}-${paymentReceiptTechnicianFile.name}`;
-                        const r = ref(storage, path);
-                        await uploadBytes(r, paymentReceiptTechnicianFile);
-                        const url = await getDownloadURL(r);
-                        setPaymentReceiptTechnicianUrl(url);
-                        setPaymentReceiptTechnicianPath(path);
-                        if (db) await updateDoc(doc(db, "chamados", editingId), { paymentReceiptTechnicianUrl: url, paymentReceiptTechnicianPath: path } as Partial<Chamado>);
-                        setPaymentReceiptTechnicianFile(null);
+                        const next: { url: string; path: string }[] = [...paymentReceipts];
+                        for (const f of files) {
+                          const path = `chamados/${editingId}/comprovantes/tecnico-${Date.now()}-${f.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+                          const r = ref(storage, path);
+                          await uploadBytes(r, f);
+                          const url = await getDownloadURL(r);
+                          next.push({ url, path });
+                        }
+                        setPaymentReceipts(next);
+                        if (db) await updateDoc(doc(db, "chamados", editingId), { paymentReceiptsTechnician: next, paymentReceiptTechnicianUrl: undefined, paymentReceiptTechnicianPath: undefined } as Partial<Chamado>);
                       } catch {}
-                    }} disabled={!editingId || !paymentReceiptTechnicianFile}>Enviar</button>
+                      finally {
+                        setUploadingReceipt(false);
+                        if (e.currentTarget) e.currentTarget.value = "";
+                      }
+                    }} />
                   </div>
-                  {!!paymentReceiptTechnicianUrl && (
-                    <div className="flex items-center justify-between border border-slate-200 rounded px-3 py-2 mt-2">
-                      <a href={paymentReceiptTechnicianUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline truncate">Abrir comprovante</a>
-                      <button className="text-red-600 text-sm hover:underline" onClick={async () => {
-                        try {
-                          if (storage && paymentReceiptTechnicianPath) { const rr = ref(storage, paymentReceiptTechnicianPath); await deleteObject(rr); }
-                        } catch {}
-                        setPaymentReceiptTechnicianUrl("");
-                        setPaymentReceiptTechnicianPath("");
-                        if (db && editingId) await updateDoc(doc(db, "chamados", editingId), { paymentReceiptTechnicianUrl: undefined, paymentReceiptTechnicianPath: undefined } as Partial<Chamado>);
-                      }}>Remover</button>
+                  {!!paymentReceipts.length && (
+                    <div className="mt-3 space-y-2">
+                      {paymentReceipts.map((rec, idx) => (
+                        <div key={idx} className="border border-slate-200 rounded-md overflow-hidden p-2">
+                          {isPdf(rec.url) ? (
+                            <div className="w-full max-w-xs h-40 mx-auto bg-slate-100">
+                              <iframe src={rec.url} className="w-full h-full" />
+                            </div>
+                          ) : (
+                            <div className="relative w-full max-w-xs h-40 mx-auto bg-slate-100">
+                              <Image src={rec.url} alt="Comprovante" fill className="object-contain" sizes="256px" />
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between p-2">
+                            <a href={rec.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">Abrir em nova guia</a>
+                            <button className="text-red-600 text-sm hover:underline" onClick={async () => {
+                              try { if (storage && rec.path) { const rr = ref(storage, rec.path); await deleteObject(rr); } } catch {}
+                              const next = paymentReceipts.filter((_, i) => i !== idx);
+                              setPaymentReceipts(next);
+                              if (db && editingId) await updateDoc(doc(db, "chamados", editingId), { paymentReceiptsTechnician: next } as Partial<Chamado>);
+                            }}>Remover</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                   {!editingId && (
@@ -809,12 +844,12 @@ export default function ChamadosPage() {
 
       {openTecnico && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTecnico(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-slate-900">Selecionar técnico</div>
             <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qTecnico} onChange={(e) => setQTecnico(e.target.value)} />
             <div className="mt-2 max-h-64 overflow-auto space-y-1">
               {tecnicos.filter((t) => (t.name || "").toLowerCase().includes(qTecnico.toLowerCase())).map((t) => (
-                <button key={t.id} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setTecnicoId(t.id); setOpenTecnico(false); }}>{t.name}{t.status ? ` ${statusEmoji(t.status)}` : ""}</button>
+                <button key={t.id} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setTecnicoId(t.id); setOpenTecnico(false); }}>{displayTecnico(t)}{t.status ? ` ${statusEmoji(t.status)}` : ""}</button>
               ))}
             </div>
           </div>
@@ -859,7 +894,7 @@ export default function ChamadosPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTime(false)}>
           <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-slate-900">Selecionar hora</div>
-            <select className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" value={appointmentTime || ""} onChange={(e) => setAppointmentTime(e.target.value)}>
+            <select className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" value={appointmentTime || ""} onChange={(e) => { setAppointmentTime(e.target.value); setOpenTime(false); }}>
               <option value="">Selecione</option>
               {times.map((t: string) => (<option key={t} value={t}>{t}</option>))}
             </select>
@@ -880,12 +915,84 @@ export default function ChamadosPage() {
           </div>
         </div>
       )}
-      {empresas.length === 0 && (
-        <div className="text-sm text-slate-700">Nenhuma empresa encontrada. Cadastre em <a className="text-blue-600 hover:underline" href="/empresas">Empresas</a>.</div>
+
+      {openTimeLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTimeLog(false)}>
+          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-bold text-slate-900">Log de controle de tempo</div>
+              <button className="text-xs text-slate-600">Exportar para Excel</button>
+            </div>
+            <div className="mt-4">
+              <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => setOpenAddSession(true)}>+ Adicionar sessão manualmente</button>
+            </div>
+            {workSessions.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {workSessions.map((s, idx) => {
+                  const d = new Date(s.startIso);
+                  const e = new Date(s.endIso);
+                  const ms = Math.max(0, e.getTime() - d.getTime());
+                  return (
+                    <div key={`${s.startIso}-${idx}`} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2">
+                      <div className="text-sm text-slate-800">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      <div className="text-sm text-slate-700">{formatDuration(ms)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-3">
+              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenTimeLog(false)}>Fechar</button>
+            </div>
+          </div>
+        </div>
       )}
-      {tecnicos.length === 0 && (
-        <div className="text-sm text-slate-700">Nenhum técnico encontrado. Cadastre em <a className="text-blue-600 hover:underline" href="/tecnicos">Técnicos</a>.</div>
+
+      {openAddSession && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setOpenAddSession(false)}>
+          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="text-lg font-bold text-slate-900">Adicionar sessão</div>
+              <button className="text-xs text-slate-700" onClick={() => setOpenAddSession(false)}>Voltar</button>
+            </div>
+            <div className="mt-3 space-y-3">
+              <div className="space-y-1">
+                <div className="text-xs text-slate-600">Data</div>
+                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">Começar em</div>
+                  <select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={sessionStart} onChange={(e) => setSessionStart(e.target.value)}>
+                    <option value="">Selecione</option>
+                    {times.map((t: string) => (<option key={`start-${t}`} value={t}>{t}</option>))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">Terminar em</div>
+                  <select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={sessionEnd} onChange={(e) => setSessionEnd(e.target.value)}>
+                    <option value="">Selecione</option>
+                    {times.map((t: string) => (<option key={`end-${t}`} value={t}>{t}</option>))}
+                  </select>
+                </div>
+              </div>
+              <div className="text-sm text-slate-700">
+                {isValidHHMM(sessionStart) && isValidHHMM(sessionEnd) ? (() => {
+                  const toMin = (x: string) => { const [hh, mm] = x.split(":"); return Number(hh) * 60 + Number(mm); };
+                  const mins = Math.max(0, toMin(sessionEnd) - toMin(sessionStart));
+                  const h = Math.floor(mins / 60);
+                  const m = mins % 60;
+                  return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m 00s`;
+                })() : ""}
+              </div>
+              <div className="flex justify-end gap-2">
+                <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" onClick={addManualSession} disabled={!sessionDate || !isValidHHMM(sessionStart) || !isValidHHMM(sessionEnd)}>Adicionar sessão</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
+      
 
       <div className="mt-4 hidden sm:block overflow-x-auto">
         <table className="min-w-full border border-slate-200 bg-white">
@@ -894,7 +1001,7 @@ export default function ChamadosPage() {
               <th className="p-2 text-left">Empresa</th>
               <th className="p-2 text-left">Técnico</th>
               <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Criado em</th>
+              <th className="p-2 text-left">Atendimento</th>
             </tr>
           </thead>
           <tbody>
@@ -903,7 +1010,7 @@ export default function ChamadosPage() {
                 <td className="p-2 text-slate-800">{mapEmpresa[c.empresaId] || c.empresaId}</td>
                 <td className="p-2 text-slate-800">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
                 <td className="p-2 text-slate-800">{c.status}</td>
-                <td className="p-2 text-slate-800">{toDateVal(c.createdAt).toLocaleString("pt-BR")}</td>
+                <td className="p-2 text-slate-800">{[formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—"}</td>
               </tr>
             ))}
           </tbody>
@@ -915,7 +1022,7 @@ export default function ChamadosPage() {
             <div className="font-semibold text-slate-900">{mapEmpresa[c.empresaId] || c.empresaId}</div>
             <div className="text-sm text-slate-700">{mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
             <div className="text-sm text-slate-700">{c.status}</div>
-            <div className="text-sm text-slate-700">{toDateVal(c.createdAt).toLocaleString("pt-BR")}</div>
+            <div className="text-sm text-slate-700">{[formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—"}</div>
           </div>
         ))}
       </div>
@@ -923,3 +1030,9 @@ export default function ChamadosPage() {
     </div>
   );
 }
+  function displayTecnico(t: TecnicoLite): string {
+    const parts = (t.name || "").trim().split(/\s+/);
+    const base = parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : (t.name || "");
+    const loc = [t.cidade, t.estado].filter(Boolean).join(" - ");
+    return [base, loc].filter(Boolean).join(" - ");
+  }
