@@ -9,7 +9,7 @@ import { addDoc, collection, CollectionReference, query, where, getDocs, doc, li
 import { DateModal } from "@/components/date-modal";
 import { parsePhoneNumberFromString, getCountries, getCountryCallingCode, type CountryCode } from "libphonenumber-js/max";
 
-const schema = z
+  const schema = z
   .object({
     category: z.enum(["Rastreador", "Informatica"]),
     name: z.string().min(2),
@@ -32,6 +32,7 @@ const schema = z
     itMileage: z.number().optional(),
     trackerMileage: z.number().optional(),
     trackerInstallationRate: z.number().optional(),
+    pix: z.string().min(3, "Informe sua chave PIX"),
   })
   .superRefine((data, ctx) => {
     if (data.country === "BR") {
@@ -60,9 +61,9 @@ export default function CadastroPage() {
     formState: { isSubmitting, errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { category: "Rastreador", country: "BR" },
+    defaultValues: { country: "BR" },
   });
-  const [category, setCategory] = useState<FormData["category"]>("Rastreador");
+  const [category, setCategory] = useState<FormData["category"] | null>(null);
   const [cep, setCep] = useState("");
   const cepReady = cep.replace(/\D/g, "").length === 8;
   const [openDate, setOpenDate] = useState(false);
@@ -209,6 +210,7 @@ export default function CadastroPage() {
     if (data.bairro) setValue("bairro", data.bairro);
     if (data.cidade) setValue("cidade", data.cidade);
     if (data.estado) setValue("estado", data.estado);
+    if ((data as Record<string, unknown>).pix) setValue("pix", String((data as Record<string, unknown>).pix || ""));
     setMoney((prev) => ({
       ...prev,
       itRate3h: data.itRate3h != null ? (data.itRate3h).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : prev.itRate3h,
@@ -428,11 +430,14 @@ function normalizeFone(raw: string) {
   
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center bg-gradient-to-br from-[#0B1020] via-[#0A0F1A] to-[#0E1330] px-3 py-6">
+    <div className="min-h-screen relative flex items-center justify-center px-3 py-6 overflow-hidden bg-[#0A0F1A]">
+      <div className="absolute inset-0 -z-10" style={{ backgroundImage: "radial-gradient(800px 400px at 15% 10%, #0b2b56 0%, transparent 70%), radial-gradient(700px 350px at 85% 90%, #0a3a2f 0%, transparent 70%)" }} />
+      <div className="absolute inset-0 -z-10 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(255,255,255,.06) 24px), repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(255,255,255,.06) 24px)" }} />
+      <div className="absolute left-0 top-1/2 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent opacity-40 animate-pulse" />
       
       <div className="w-full max-w-lg sm:max-w-xl md:max-w-2xl bg-white border border-slate-200 rounded-lg p-4 sm:p-6 shadow-2xl">
         <div className="flex items-center justify-center">
-          <div className="text-2xl font-bold text-slate-900">{category === "Informatica" ? "Técnico de Informática" : category === "Rastreador" ? "Técnico de Rastreador Veicular" : "Cadastro de Técnico"}</div>
+          <div className="text-2xl font-bold text-slate-900 text-center">{category === "Informatica" ? "Técnico de Informática" : category === "Rastreador" ? "Técnico de Rastreador Veicular" : "Cadastro de Técnico"}</div>
         </div>
         {!existingMode && step >= 1 && step <= 6 && !blocked && (
           <div className="mt-2">
@@ -446,7 +451,7 @@ function normalizeFone(raw: string) {
         )}
 
         {existingMode && (
-          <form className="mt-4 space-y-6" onSubmit={handleSubmit(onSubmit)}>
+        <form className="mt-4 space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-3">
               <label className="text-sm font-medium text-slate-800">Seu número de WhatsApp</label>
               <div className="flex items-center gap-2">
@@ -479,6 +484,11 @@ function normalizeFone(raw: string) {
                 <label className="text-sm font-medium text-slate-800">Email <span className="text-red-600">*</span></label>
                 <input className={`w-full border ${errors.email ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500`} placeholder="Email" type="email" {...register("email")} />
                 {errors.email && (<div className="text-xs text-red-600">{errors.email.message as string}</div>)}
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-800">Chave PIX <span className="text-red-600">*</span></label>
+                <input className={`w-full border ${errors.pix ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500`} placeholder="Chave PIX" {...register("pix")} />
+                {errors.pix && (<div className="text-xs text-red-600">{errors.pix.message as string}</div>)}
               </div>
             </div>
 
@@ -673,6 +683,11 @@ function normalizeFone(raw: string) {
               <label className="text-sm font-medium text-slate-800">Email <span className="text-red-600">*</span></label>
               <input className={`w-full border ${errors.email ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500`} placeholder="Email" type="email" {...register("email")} />
               {errors.email && (<div className="text-xs text-red-600">{errors.email.message as string}</div>)}
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-800">Chave PIX <span className="text-red-600">*</span></label>
+              <input className={`w-full border ${errors.pix ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500`} placeholder="Chave PIX" {...register("pix")} />
+              {errors.pix && (<div className="text-xs text-red-600">{errors.pix.message as string}</div>)}
             </div>
             <div className="flex justify-between">
               <button className="rounded-md px-4 py-2 bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => setStep(2)}>Voltar</button>

@@ -19,6 +19,8 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-hook-form": "^7.66.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz",
+    "leaflet": "^1.9.4",
     "zod": "^4.1.13"
   },
   "devDependencies": {
@@ -29,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@types/leaflet": "^1.9.12"
   }
 }

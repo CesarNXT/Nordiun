@@ -79,6 +79,7 @@ export default function ChamadosPage() {
   const [sessionDate, setSessionDate] = useState("");
   const [sessionStart, setSessionStart] = useState("");
   const [sessionEnd, setSessionEnd] = useState("");
+  const [editingSessionIdx, setEditingSessionIdx] = useState<number | null>(null);
   const [qEmpresa, setQEmpresa] = useState("");
   const [qTecnico, setQTecnico] = useState("");
   const [qContact, setQContact] = useState("");
@@ -96,6 +97,7 @@ export default function ChamadosPage() {
   const [paymentDateTechnician, setPaymentDateTechnician] = useState("");
   const [paymentStatusCompany, setPaymentStatusCompany] = useState<Chamado["paymentStatusCompany"]>("A pagar");
   const [paymentStatusTechnician, setPaymentStatusTechnician] = useState<Chamado["paymentStatusTechnician"]>("A pagar");
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const tecnicoSel = useMemo(() => tecnicos.find((t) => t.id === tecnicoId), [tecnicoId, tecnicos]);
@@ -178,12 +180,12 @@ export default function ChamadosPage() {
       if (!kmValorEmpresa) setKmValorEmpresa(kmEmp != null ? String(kmEmp) : kmValorEmpresa);
       if (!kmValorTecnico) setKmValorTecnico(kmTec != null ? String(kmTec) : kmValorTecnico);
     } else {
-      let baseEmp = emp.valores?.itRate3h;
-      let baseTec = tec.itRate3h;
-      if (serviceType === "Meia diária") { baseEmp = emp.valores?.itHalfDaily; baseTec = tec.itDaily ? tec.itDaily / 2 : tec.itDaily; }
-      if (serviceType === "Diária") { baseEmp = emp.valores?.itDaily; baseTec = tec.itDaily; }
-      if (!valorEmpresa) setValorEmpresa(baseEmp != null ? String(baseEmp) : valorEmpresa);
-      if (!valorTecnico) setValorTecnico(baseTec != null ? String(baseTec) : valorTecnico);
+      const mapHours: Record<string, number> = { "1h": 1, "2h": 2, "3h": 3, "Meia diária": 4, "Diária": 9 };
+      const h = mapHours[serviceType || "3h"] || 3;
+      const baseEmp = calcHourRate("empresa", h);
+      const baseTec = calcHourRate("tecnico", h);
+      if (!valorEmpresa) setValorEmpresa(baseEmp ? String(baseEmp) : valorEmpresa);
+      if (!valorTecnico) setValorTecnico(baseTec ? String(baseTec) : valorTecnico);
       const kmEmp = emp.valores?.itMileage;
       const kmTec = tec.itMileage;
       if (!kmValorEmpresa) setKmValorEmpresa(kmEmp != null ? String(kmEmp) : kmValorEmpresa);
@@ -239,16 +241,92 @@ export default function ChamadosPage() {
     return `${s}s`;
   }
 
+  function isoToDate(iso: string): string {
+    const d = new Date(iso);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function isoToHHMM(iso: string): string {
+    const d = new Date(iso);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+
+  function toCurrency(n: number): string { return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  function calcHourRate(kind: "empresa" | "tecnico", h: number): number {
+    const emp = empresas.find((e) => e.id === empresaId);
+    const tec = tecnicos.find((t) => t.id === tecnicoId);
+    if (!emp || !tec || h < 1) return 0;
+    if (kind === "empresa") {
+      const v = emp.valores || {};
+      const direct = (v as Record<string, unknown>)[`itRate${h}h`] as number | undefined;
+      if (typeof direct === "number" && isFinite(direct)) return direct;
+      const rate3 = typeof v.itRate3h === "number" && isFinite(v.itRate3h) ? v.itRate3h : undefined;
+      const add = typeof v.itAdditionalHour === "number" && isFinite(v.itAdditionalHour) ? v.itAdditionalHour : undefined;
+      if (rate3 != null) {
+        if (h <= 3) {
+          const perHour = rate3 / 3;
+          return perHour * h;
+        }
+        if (add != null) return rate3 + (h - 3) * add;
+      }
+      if (add != null) return add * h;
+      return 0;
+    } else {
+      const direct = (tec as unknown as Record<string, unknown>)[`itRate${h}h`] as number | undefined;
+      if (typeof direct === "number" && isFinite(direct)) return direct;
+      const rate3 = typeof tec.itRate3h === "number" && isFinite(tec.itRate3h) ? tec.itRate3h : undefined;
+      const add = typeof tec.itAdditionalHour === "number" && isFinite(tec.itAdditionalHour) ? tec.itAdditionalHour : undefined;
+      if (rate3 != null) {
+        if (h <= 3) {
+          const perHour = rate3 / 3;
+          return perHour * h;
+        }
+        if (add != null) return rate3 + (h - 3) * add;
+      }
+      if (add != null) return add * h;
+      return 0;
+    }
+  }
+
   function addManualSession() {
     if (!sessionDate || !isValidHHMM(sessionStart) || !isValidHHMM(sessionEnd)) return;
     const startIso = new Date(`${sessionDate}T${sessionStart}:00`).toISOString();
     const endIso = new Date(`${sessionDate}T${sessionEnd}:00`).toISOString();
     if (new Date(endIso).getTime() <= new Date(startIso).getTime()) return;
-    setWorkSessions((prev) => [...prev, { startIso, endIso }]);
+    const payload = { startIso, endIso };
+    setWorkSessions((prev) => {
+      const next = editingSessionIdx != null ? prev.map((x, i) => (i === editingSessionIdx ? payload : x)) : [...prev, payload];
+      try { if (db && editingId) { updateDoc(doc(db, "chamados", editingId), { workSessions: next } as Partial<Chamado>); } } catch {}
+      return next;
+    });
     setOpenAddSession(false);
+    setEditingSessionIdx(null);
     setSessionDate("");
     setSessionStart("");
     setSessionEnd("");
+  }
+
+  function removeSession(idx: number) {
+    setWorkSessions((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      try { if (db && editingId) { updateDoc(doc(db, "chamados", editingId), { workSessions: next } as Partial<Chamado>); } } catch {}
+      return next;
+    });
+  }
+
+  function openEditSession(idx: number) {
+    const s = workSessions[idx];
+    setSessionDate(isoToDate(s.startIso));
+    setSessionStart(isoToHHMM(s.startIso));
+    setSessionEnd(isoToHHMM(s.endIso));
+    setEditingSessionIdx(idx);
+    setOpenAddSession(true);
   }
 
   
@@ -679,7 +757,7 @@ export default function ChamadosPage() {
                   <div className="space-y-1"><div className="text-xs text-slate-600">Valor por KM (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={kmValorTecnico} onChange={setNum(setKmValorTecnico)} /></div>
                 </>
               )}
-              
+
               {(() => {
                 const num = (s: string) => { const x = s.replace(/[^0-9.,]/g, "").replace(/,/g, "."); const n = Number(x); return isFinite(n) ? n : 0; };
                 const ve = num(valorEmpresa);
@@ -692,7 +770,7 @@ export default function ChamadosPage() {
                 const totalKmTecnico = kmt * kvT;
                 const toMin = (t: string) => { const [hh, mm] = (t || "").split(":"); const h = Number(hh); const m = Number(mm); if (!isFinite(h) || !isFinite(m)) return 0; return h * 60 + m; };
                 const mins = Math.max(0, toMin(workEnd) - toMin(workStart));
-                const baseIncluded = serviceType === "Diária" ? 9 * 60 : (serviceType === "Meia diária" ? 4.5 * 60 : 3 * 60);
+                const baseIncluded = (serviceType === "Diária" ? 9 * 60 : (serviceType === "Meia diária" ? 4 * 60 : (serviceType === "2h" ? 120 : (serviceType === "1h" ? 60 : 3 * 60))));
                 const emp = empresas.find((e) => e.id === empresaId);
                 const tec = tecnicos.find((t) => t.id === tecnicoId);
                 const tolMin = Number(emp?.valores?.itToleranceMinutes || 0);
@@ -715,6 +793,27 @@ export default function ChamadosPage() {
                   </>
                 );
               })()}
+
+              <div className="sm:col-span-2 mt-2">
+                <div className="text-sm font-semibold text-slate-900">Tabela por horas</div>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <div className="text-xs text-slate-600">Hora</div>
+                  <div className="text-xs text-slate-600">Empresa</div>
+                  <div className="text-xs text-slate-600">Técnico</div>
+                  {[1,2,3,4,5,6,7,8,9].map((h) => {
+                    const ve = calcHourRate("empresa", h);
+                    const vt = calcHourRate("tecnico", h);
+                    return (
+                      <div key={h} className="contents">
+                        <div className="text-sm text-slate-800">{h}h</div>
+                        <div className="text-sm text-slate-800">{ve ? toCurrency(ve) : "-"}</div>
+                        <div className="text-sm text-slate-800">{vt ? toCurrency(vt) : "-"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="text-xs text-slate-600 mt-1">9h equivale à diária (8h de serviço + 1h de almoço). Acima de 9h utiliza hora adicional.</div>
+              </div>
             </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 px-2 sm:px-4">
                 <div className="space-y-1"><div className="text-xs text-slate-600">Data de pagamento (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={paymentDateCompany ? paymentDateCompany.substring(0,10) : ""} onChange={(e) => setPaymentDateCompany(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
@@ -908,7 +1007,7 @@ export default function ChamadosPage() {
           <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-slate-900">Tipo de chamado</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {(callCategory === "Informatica" ? ["3h","Meia diária","Diária"] : ["Instalação"]).map((opt) => (
+              {(callCategory === "Informatica" ? ["1h","2h","3h","Meia diária","Diária"] : ["Instalação"]).map((opt) => (
                 <button key={opt} className="px-3 py-2 border border-slate-300 rounded hover:bg-slate-100" onClick={() => { setServiceType(opt); setOpenServiceType(false); }}>{opt}</button>
               ))}
             </div>
@@ -935,10 +1034,14 @@ export default function ChamadosPage() {
                   return (
                     <div key={`${s.startIso}-${idx}`} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2">
                       <div className="text-sm text-slate-800">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
-                      <div className="text-sm text-slate-700">{formatDuration(ms)}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm text-slate-700">{formatDuration(ms)}</div>
+                        <button className="text-xs text-blue-600 hover:underline" onClick={() => openEditSession(idx)}>Editar</button>
+                        <button className="text-xs text-red-600 hover:underline" onClick={() => removeSession(idx)}>Remover</button>
+                      </div>
                     </div>
                   );
-                })}
+                  })}
               </div>
             )}
             <div className="flex justify-end gap-2 mt-3">
@@ -998,33 +1101,53 @@ export default function ChamadosPage() {
         <table className="min-w-full border border-slate-200 bg-white">
           <thead>
             <tr className="bg-slate-100">
+              <th className="p-2 text-left">Nome</th>
               <th className="p-2 text-left">Empresa</th>
               <th className="p-2 text-left">Técnico</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Atendimento</th>
+              <th className="p-2 text-left">Data e hora</th>
+              <th className="p-2 text-left">Local</th>
+              <th className="p-2 text-left">Tipo</th>
             </tr>
           </thead>
           <tbody>
-            {calls.map((c) => (
-              <tr key={c.id} className={`border-t border-slate-200 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-                <td className="p-2 text-slate-800">{mapEmpresa[c.empresaId] || c.empresaId}</td>
-                <td className="p-2 text-slate-800">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
-                <td className="p-2 text-slate-800">{c.status}</td>
-                <td className="p-2 text-slate-800">{[formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—"}</td>
-              </tr>
-            ))}
+            {calls.map((c) => {
+              const empresaNome = mapEmpresa[c.empresaId] || c.empresaId;
+              const empresaPrimeira = (empresaNome || "").split(/\s+/)[0] || empresaNome;
+              const dataHora = [formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—";
+              const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
+              const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
+              return (
+                <tr key={c.id} className={`border-t border-slate-200 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
+                  <td className="p-2 text-slate-800">{c.name}</td>
+                  <td className="p-2 text-slate-800">{empresaPrimeira}</td>
+                  <td className="p-2 text-slate-800">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
+                  <td className="p-2 text-slate-800">{dataHora}</td>
+                  <td className="p-2 text-slate-800">{local || "—"}</td>
+                  <td className="p-2 text-slate-800">{tipo}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
       <div className="sm:hidden space-y-2">
-        {calls.map((c) => (
-          <div key={c.id} className={`border rounded-md p-3 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-            <div className="font-semibold text-slate-900">{mapEmpresa[c.empresaId] || c.empresaId}</div>
-            <div className="text-sm text-slate-700">{mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
-            <div className="text-sm text-slate-700">{c.status}</div>
-            <div className="text-sm text-slate-700">{[formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—"}</div>
-          </div>
-        ))}
+        {calls.map((c) => {
+          const empresaNome = mapEmpresa[c.empresaId] || c.empresaId;
+          const empresaPrimeira = (empresaNome || "").split(/\s+/)[0] || empresaNome;
+          const dataHora = [formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—";
+          const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
+          const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
+          return (
+            <div key={c.id} className={`border rounded-md p-3 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
+              <div className="font-semibold text-slate-900">{c.name}</div>
+              <div className="text-sm text-slate-700">Empresa: {empresaPrimeira}</div>
+              <div className="text-sm text-slate-700">Técnico: {mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
+              <div className="text-sm text-slate-700">Data e hora: {dataHora}</div>
+              <div className="text-sm text-slate-700">Local: {local || "—"}</div>
+              <div className="text-sm text-slate-700">Tipo: {tipo}</div>
+            </div>
+          );
+        })}
       </div>
       
     </div>

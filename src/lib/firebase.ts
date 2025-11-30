@@ -25,7 +25,7 @@ export const auth: Auth | null = hasConfig ? getAuth(app) : null;
 export const db: Firestore = (() => {
   setLogLevel("silent");
   if (hasConfig) {
-    return initializeFirestore(app, { experimentalForceLongPolling: true, useFetchStreams: false });
+    return initializeFirestore(app, { experimentalForceLongPolling: true });
   }
   const f = getFirestore(app);
   try { connectFirestoreEmulator(f, "localhost", 8080); } catch {}

@@ -53,7 +53,17 @@ export default function EmpresasPage() {
     itMileage: "",
     itAdditionalHour: "",
   });
-  const [visibleHours, setVisibleHours] = useState<number[]>([1, 2, 3]);
+  const [visibleHours, setVisibleHours] = useState<number[]>([1,2,3,4,5,6,7,8,9]);
+
+  function getHoursFrom(e: Partial<Empresa>): number[] {
+    const hrs: number[] = [];
+    for (let h = 1; h <= 12; h++) {
+      const key = `itRate${h}h` as keyof Empresa;
+      const val = (e as Record<string, unknown>)[key] as unknown;
+      if (typeof val === "number") hrs.push(h);
+    }
+    return hrs.length ? hrs : [1,2,3,4,5,6,7,8,9];
+  }
 
   function formatCurrency(n?: number): string {
     if (typeof n !== "number" || isNaN(n)) return "";
@@ -141,6 +151,23 @@ export default function EmpresasPage() {
       } else copy[k] = v;
     });
     return copy;
+  }
+
+  function formatBrPhoneDisplay(nat: string): string {
+    const d = (nat || "").replace(/\D/g, "");
+    if (d.length === 11) {
+      const dd = d.slice(0, 2);
+      const a = d.slice(2, 7);
+      const b = d.slice(7);
+      return `(${dd}) ${a}-${b}`;
+    }
+    if (d.length === 10) {
+      const dd = d.slice(0, 2);
+      const a = d.slice(2, 6);
+      const b = d.slice(6);
+      return `(${dd}) ${a}-${b}`;
+    }
+    return d;
   }
 
   
@@ -288,10 +315,10 @@ export default function EmpresasPage() {
   async function saveEditDoc() {
     const target = modalTarget === "detail" ? "detail" : "new";
     if (editingDocIndex == null) return;
-    const current = target === "detail" ? detailDocs[editingDocIndex] : newDocs[editingDocIndex];
-    const nextName = (editingDocName || current?.nome || "").trim();
-    if (!current) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
     if (target === "detail") {
+      const current = detailDocs[editingDocIndex];
+      const nextName = (editingDocName || current?.nome || "").trim();
+      if (!current || !detailForm || !db) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
       if (!detailForm || !db) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
       let url = current.url;
       let path = current.path;
@@ -314,6 +341,9 @@ export default function EmpresasPage() {
         setDetailDocs((prev) => prev.map((d, i) => i === editingDocIndex ? { ...d, nome: nextName || d.nome, url, path } : d));
       } catch {}
     } else {
+      const current = newDocs[editingDocIndex];
+      const nextName = (editingDocName || current?.nome || "").trim();
+      if (!current) { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); return; }
       let url = current.url;
       let path = current.path;
       if (editingDocFile && storage) {
@@ -410,7 +440,7 @@ export default function EmpresasPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setOpenDocs(true); }}>Documentos</button>
                 <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setOpenResp(true); }}>Responsáveis</button>
-                <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setOpenVals(true); }}>Valores</button>
+                <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setVisibleHours([1,2,3,4,5,6,7,8,9]); setOpenVals(true); }}>Valores</button>
               </div>
             </div>
             
@@ -493,7 +523,7 @@ export default function EmpresasPage() {
             {(((modalTarget === "detail" ? detailForm?.responsaveis : form.responsaveis) || [])).map((r, idx) => (
               <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Responsável" value={r.nome} onChange={(e) => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) }); }} />
-                <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Número do responsável" value={r.numero} onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
+                <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Número do responsável" inputMode="numeric" value={formatBrPhoneDisplay(r.numero || "")} onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 11); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
                 <div className="flex items-center">
                   <button type="button" className="w-full px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700" onClick={() => {
                     const num = String(r.numero || "").replace(/\D/g, "");
@@ -536,21 +566,13 @@ export default function EmpresasPage() {
                   <div key={h} className="space-y-1"><div className="text-xs text-slate-600">{label}</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={display} onChange={onChange} /></div></div>
                 );
               })}
-              <div className="space-y-1"><div className="text-xs text-slate-600">Meia diária</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itHalfDaily) : money.itHalfDaily} onChange={modalTarget === "detail" ? handleCurrencyDetail("itHalfDaily") : handleCurrency("itHalfDaily")} /></div></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Diária</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itDaily) : money.itDaily} onChange={modalTarget === "detail" ? handleCurrencyDetail("itDaily") : handleCurrency("itDaily")} /></div></div>
+              
               <div className="space-y-1"><div className="text-xs text-slate-600">Deslocamento</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itMileage) : money.itMileage} onChange={modalTarget === "detail" ? handleCurrencyDetail("itMileage") : handleCurrency("itMileage")} /></div></div>
               <div className="space-y-1"><div className="text-xs text-slate-600">Hora adicional</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itAdditionalHour) : money.itAdditionalHour} onChange={modalTarget === "detail" ? handleCurrencyDetail("itAdditionalHour") : handleCurrency("itAdditionalHour")} /></div></div>
               <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Tolerância (minutos) para adicional</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={(modalTarget === "detail" ? (detailForm?.itToleranceMinutes ?? "") : (form.itToleranceMinutes ?? "")) as unknown as string} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, itToleranceMinutes: isFinite(n) ? n : undefined })); else setForm((prev) => ({ ...prev, itToleranceMinutes: isFinite(n) ? n : undefined })); }} /></div>
             </div>
-            <div className="flex justify-between">
-              <button type="button" className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => {
-                const nextHour = Math.max(...visibleHours) + 1;
-                if (nextHour <= 12) setVisibleHours((prev) => [...prev, nextHour]);
-              }}>+ Adicionar hora</button>
-              <button type="button" className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => {
-                if (visibleHours.length > 1) setVisibleHours((prev) => prev.slice(0, -1));
-              }}>Remover última</button>
-            </div>
+            <div className="text-xs text-slate-600 mt-1">9h equivale à diária (8h de serviço + 1h de almoço). Acima de 9h utiliza hora adicional.</div>
+            
             <div className="flex justify-end"><button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
               if (modalTarget === "detail") {
                 if (!db || !detailForm) return;
@@ -581,7 +603,7 @@ export default function EmpresasPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={async () => { setModalTarget("detail"); if (detailForm) await loadDetailDocs(detailForm.id); setOpenDocs(true); }}>Documentos</button>
               <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setOpenResp(true); }}>Responsáveis</button>
-              <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setVisibleHours(getHoursFrom(detailForm || {})); setOpenVals(true); }}>Valores</button>
+              <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("detail"); setVisibleHours([1,2,3,4,5,6,7,8,9]); setOpenVals(true); }}>Valores</button>
             </div>
             <div className="flex gap-2 pt-2"><button className="flex-1 rounded-md py-2 bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
               if (!db) return;

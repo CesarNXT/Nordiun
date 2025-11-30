@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc, CollectionReference, onSnapshot, query, orderBy, limit as fslimit, startAfter, type QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc, CollectionReference, onSnapshot, query, orderBy, limit as fslimit, startAfter, type QueryDocumentSnapshot, where, getCountFromServer } from "firebase/firestore";
 import { fetchCEP } from "@/lib/viacep";
 import { parsePhoneNumberFromString, getCountries, getCountryCallingCode, type CountryCode } from "libphonenumber-js/max";
 import { DateModal } from "@/components/date-modal";
+import * as XLSX from "xlsx";
 
 type Tecnico = {
   categories?: ("Rastreador" | "Informatica")[];
@@ -32,6 +33,10 @@ type Tecnico = {
   status?: "Novo" | "Ativo" | "Cancelado" | "Ajudante";
   supervisorId?: string;
   geo?: { lat: number; lng: number };
+  pix?: string;
+  obs?: string;
+  numeroBlocoApartamento?: string;
+  createdAt?: string;
 };
 
 export default function TecnicosPage() {
@@ -57,6 +62,9 @@ export default function TecnicosPage() {
     cidade: "",
     estado: "",
     status: "Novo",
+    pix: "",
+    obs: "",
+    numeroBlocoApartamento: "",
   });
   const countries = getCountries();
   const [openDdi, setOpenDdi] = useState(false);
@@ -82,21 +90,42 @@ export default function TecnicosPage() {
     trackerMileage: "",
     trackerInstallationRate: "",
   });
-  const [pageSize] = useState(25);
+  const [pageSize, setPageSize] = useState<number>(25);
   const [pageEnd, setPageEnd] = useState<QueryDocumentSnapshot<Tecnico> | null>(null);
   const [pageStack, setPageStack] = useState<QueryDocumentSnapshot<Tecnico>[]>([]);
   const [unsub, setUnsub] = useState<null | (() => void)>(null);
 
-  const [qName, setQName] = useState("");
-  const [qPhone, setQPhone] = useState("");
-  const [qCpf, setQCpf] = useState("");
+  const [qQuery, setQQuery] = useState("");
+  const [qCity, setQCity] = useState("");
+  const [qState, setQState] = useState("");
+  const [openStates, setOpenStates] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [newMonthCount, setNewMonthCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [stateCounts, setStateCounts] = useState<Record<string, number>>({});
 
   const filtered = items.filter((t) => {
-    const nameOk = qName ? (t.name || "").toLowerCase().includes(qName.toLowerCase()) : true;
-    const phoneOk = qPhone ? (t.phoneNumber || "").includes(qPhone.replace(/\D/g, "")) : true;
-    const cpfOk = qCpf ? (t.cpf || "").replace(/\D/g, "").includes(qCpf.replace(/\D/g, "")) : true;
-    return nameOk && phoneOk && cpfOk;
+    const q = qQuery.trim();
+    const qLower = q.toLowerCase();
+    const digits = q.replace(/\D/g, "");
+    const searchOk = q
+      ? ((t.name || "").toLowerCase().includes(qLower) || (t.cpf || "").replace(/\D/g, "").includes(digits) || (t.phoneNumber || "").includes(digits))
+      : true;
+    const cityOk = qCity ? (t.cidade || "").toLowerCase().includes(qCity.toLowerCase()) : true;
+    const stateOk = qState ? (t.estado || "").toLowerCase().includes(qState.toLowerCase()) : true;
+    return searchOk && cityOk && stateOk;
   });
+
+  const UF: { uf: string; name: string }[] = [
+    { uf: "AC", name: "Acre" }, { uf: "AL", name: "Alagoas" }, { uf: "AP", name: "Amapá" }, { uf: "AM", name: "Amazonas" },
+    { uf: "BA", name: "Bahia" }, { uf: "CE", name: "Ceará" }, { uf: "DF", name: "Distrito Federal" }, { uf: "ES", name: "Espírito Santo" },
+    { uf: "GO", name: "Goiás" }, { uf: "MA", name: "Maranhão" }, { uf: "MT", name: "Mato Grosso" }, { uf: "MS", name: "Mato Grosso do Sul" },
+    { uf: "MG", name: "Minas Gerais" }, { uf: "PA", name: "Pará" }, { uf: "PB", name: "Paraíba" }, { uf: "PR", name: "Paraná" },
+    { uf: "PE", name: "Pernambuco" }, { uf: "PI", name: "Piauí" }, { uf: "RJ", name: "Rio de Janeiro" }, { uf: "RN", name: "Rio Grande do Norte" },
+    { uf: "RS", name: "Rio Grande do Sul" }, { uf: "RO", name: "Rondônia" }, { uf: "RR", name: "Roraima" }, { uf: "SC", name: "Santa Catarina" },
+    { uf: "SP", name: "São Paulo" }, { uf: "SE", name: "Sergipe" }, { uf: "TO", name: "Tocantins" }
+  ];
+
 
   function handleCurrency(key: keyof Tecnico) {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,6 +157,23 @@ function statusEmoji(s?: Tecnico["status"]) {
   if (s === "Cancelado") return "❌";
   return "";
 }
+
+  function formatBrPhoneDisplay(nat: string): string {
+    const d = (nat || "").replace(/\D/g, "");
+    if (d.length === 11) {
+      const dd = d.slice(0, 2);
+      const a = d.slice(2, 7);
+      const b = d.slice(7);
+      return `(${dd}) ${a}-${b}`;
+    }
+    if (d.length === 10) {
+      const dd = d.slice(0, 2);
+      const a = d.slice(2, 6);
+      const b = d.slice(6);
+      return `(${dd}) ${a}-${b}`;
+    }
+    return d;
+  }
 
   function formatCurrencyTech(n?: number): string {
     if (typeof n !== "number" || !isFinite(n)) return "";
@@ -161,6 +207,28 @@ function statusEmoji(s?: Tecnico["status"]) {
   }, [cep]);
 
   useEffect(() => {
+    async function fillDetail() {
+      const d = detailForm;
+      if (!d) return;
+      const raw = String(d.cep || "");
+      const digits = raw.replace(/\D/g, "");
+      const data = await fetchCEP(digits || "");
+      if (data) {
+        setDetailForm((prev) => ({
+          ...prev!,
+          cep: digits,
+          rua: data.logradouro || "",
+          bairro: data.bairro || "",
+          cidade: data.localidade || prev!.cidade || "",
+          estado: data.uf || prev!.estado || "",
+        }));
+      }
+    }
+    const digits = String(detailForm?.cep || "").replace(/\D/g, "");
+    if (digits.length === 8) fillDetail();
+  }, [detailForm?.cep]);
+
+  useEffect(() => {
     function listen(start?: QueryDocumentSnapshot<Tecnico> | null) {
       if (!db) return;
       if (unsub) unsub();
@@ -177,7 +245,34 @@ function statusEmoji(s?: Tecnico["status"]) {
     }
     listen(null);
     return () => { if (unsub) unsub(); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSize]);
+
+  useEffect(() => {
+    async function loadStats() {
+      if (!db) return;
+      const col = collection(db, "registrations") as CollectionReference<Tecnico>;
+      const total = await getCountFromServer(col);
+      setTotalCount(total.data().count || 0);
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+      const qNew = query(col, where("createdAt", ">=", start), where("createdAt", "<", end));
+      const m = await getCountFromServer(qNew);
+      setNewMonthCount(m.data().count || 0);
+      const qActive = query(col, where("status", "==", "Ativo"));
+      const a = await getCountFromServer(qActive);
+      setActiveCount(a.data().count || 0);
+      const UFS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+      const results = await Promise.all(UFS.map(async (uf) => {
+        const qUf = query(col, where("estado", "==", uf));
+        const c = await getCountFromServer(qUf);
+        return { uf, n: c.data().count || 0 };
+      }));
+      const map: Record<string, number> = {};
+      for (const r of results) map[r.uf] = r.n;
+      setStateCounts(map);
+    }
+    loadStats();
   }, []);
 
   function nextPage() {
@@ -210,6 +305,169 @@ function statusEmoji(s?: Tecnico["status"]) {
     setUnsub(() => stop);
   }
 
+  async function onExcelFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][];
+    await processRows(data);
+    e.target.value = "";
+  }
+
+  async function processRows(rows: string[][]) {
+    if (!rows || !rows.length) return;
+    const normalize = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const headerRaw = rows[0] || [];
+    const header = headerRaw.map((h) => normalize(h));
+    const find = (...names: string[]) => {
+      for (const n of names) {
+        const i = header.indexOf(normalize(n));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    const iNome = find("nome", "name", "tecnico", "t ecnico", "nome completo", "nome do tecnico", "nome do t ecnico");
+    const iStatus = find("status");
+    const iRg = find("rg");
+    const iCpf = find("cpf");
+    const iNascimento = find("data de nascimento", "nascimento", "data nasc", "dt nascimento", "data de nasc");
+    const iTelefone = find("telefone", "celular", "whatsapp", "whats", "phone");
+    const iEmail = find("e-mail", "email");
+    const iEstado = find("estado", "uf");
+    const iCidade = find("cidade", "municipio", "munic  pio");
+    const iBairro = find("bairro");
+    const iEndereco = find("endereco", "endere  o", "rua", "logradouro");
+    const iCep = find("cep");
+    const iNumBlocoAp = find("numero bloco apartamento", "numero/bloco/apartamento", "numero bloco", "complemento");
+    const iAt3h = find("atendimento ate 3h", "atendimento at  3h", "atendimento 3h", "3h");
+    const iHoraAdicional = find("hora adicional", "hora adicio", "hora adicio.", "hora extra");
+    const iDiaria = find("diaria", "di ria");
+    const iDeslocamento = find("deslocamento", "deslocamento it", "desloc.");
+    const iObs = find("obs", "observacoes", "observa  es", "obs:");
+    const iPix = find("pix", "chave pix", "chave");
+    const col = collection(db, "registrations") as CollectionReference<Tecnico>;
+    let imported = 0;
+    function extractCityStateFromAddress(addr: string): { cidade?: string; estado?: string } {
+      const s = String(addr || "");
+      const parts = s.split(",");
+      const tail = parts[parts.length - 1] || "";
+      const m = tail.match(/\s-\s([A-Za-z]{2})\b/);
+      const estado = m ? m[1].toUpperCase() : undefined;
+      let cidade: string | undefined;
+      if (parts.length >= 2) {
+        const p = parts[parts.length - 2].trim();
+        cidade = p.replace(/\s-\s[A-Za-z]{2}.*/, "").trim();
+      }
+      return { cidade, estado };
+    }
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      const get = (i: number) => {
+        if (i < 0) return "";
+        const v = (row as unknown[])[i];
+        if (v == null) return "";
+        if (typeof v === "number") return String(Math.round(v));
+        return String(v).trim();
+      };
+      let nome = get(iNome);
+      if (!nome) {
+        const em = get(iEmail);
+        const local = em.split("@")[0] || "";
+        nome = local.replace(/[._-]+/g, " ").trim();
+      }
+      if (!nome) continue;
+      let estado = get(iEstado);
+      const ufMatch = estado.match(/^([A-Za-z]{2})\s*-/);
+      if (ufMatch) estado = ufMatch[1].toUpperCase();
+      let cidade = get(iCidade);
+      if (!cidade || !estado) {
+        const fromAddr = extractCityStateFromAddress(get(iEndereco));
+        cidade = cidade || fromAddr.cidade || "";
+        estado = estado || fromAddr.estado || estado;
+      }
+      const cepRaw = get(iCep);
+      const cepDigits = cepRaw.replace(/\D/g, "");
+      const payload: Tecnico = {
+        categories: ["Informatica"],
+        category: "Informatica",
+        name: nome.toUpperCase(),
+        email: get(iEmail),
+        rg: get(iRg),
+        cpf: get(iCpf),
+        birthDate: parseBrDate(get(iNascimento)),
+        country: "BR",
+        phoneNumber: formatImportedPhone(get(iTelefone)),
+        cep: cepDigits,
+        rua: get(iEndereco),
+        numero: "",
+        complemento: "",
+        bairro: get(iBairro),
+        cidade,
+        estado,
+        itRate3h: parseCurrency(get(iAt3h)),
+        itAdditionalHour: parseCurrency(get(iHoraAdicional)),
+        itDaily: parseCurrency(get(iDiaria)),
+        itMileage: parseCurrency(get(iDeslocamento)),
+        status: parseStatus(get(iStatus)),
+        supervisorId: undefined,
+        pix: get(iPix),
+        obs: get(iObs),
+        numeroBlocoApartamento: get(iNumBlocoAp),
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        const clean = Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== undefined)) as Tecnico;
+        const docRef = await addDoc(col, clean);
+        imported++;
+        if (payload.cep && payload.cidade && payload.estado) {
+          fetch("/api/geocode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: docRef.id, cep: payload.cep, cidade: payload.cidade, estado: payload.estado, rua: payload.rua, numero: payload.numero, bairro: payload.bairro }) });
+        }
+      } catch {}
+    }
+    alert(`${imported} técnicos importados`);
+  }
+
+  
+
+  function val(row: string[], idx: number): string {
+    return idx >= 0 ? String(row[idx] || "").trim() : "";
+  }
+
+  function parseCurrency(s: string): number | undefined {
+    const digits = s.replace(/\D/g, "");
+    if (!digits) return undefined;
+    return Number(digits) / 100;
+  }
+
+  function parseBrDate(s: string): string {
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!m) return "";
+    const d = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const y = Number(m[3].length === 2 ? `20${m[3]}` : m[3]);
+    const dt = new Date(y, mo, d);
+    if (isNaN(dt.getTime())) return "";
+    return dt.toISOString();
+  }
+
+  function parseStatus(s: string): NonNullable<Tecnico["status"]> {
+    const t = s.toLowerCase();
+    if (t.includes("ativo")) return "Ativo";
+    if (t.includes("ajudante")) return "Ajudante";
+    if (t.includes("cancel")) return "Cancelado";
+    return "Novo";
+  }
+
+  function formatImportedPhone(s: string): string {
+    const digits = s.replace(/\D/g, "");
+    if (digits.startsWith("55")) return digits;
+    if (digits.length >= 10 && digits.length <= 11) return `55${digits}`;
+    return digits ? `55${digits}` : "";
+  }
+
   async function create() {
     try {
       const cepDigits = (cep || "").replace(/\D/g, "");
@@ -221,8 +479,8 @@ function statusEmoji(s?: Tecnico["status"]) {
       const col = collection(db, "registrations") as CollectionReference<Tecnico>;
       const cats = (form.categories && form.categories.length) ? form.categories : (form.category ? [form.category] : []);
       if (!cats.length) { alert("Selecione pelo menos uma categoria"); return; }
-      const payload: Tecnico = { ...form, cep: cepDigits, categories: cats, category: cats[0] };
-      const docRef = await addDoc(col, payload);
+      const payload: Tecnico = { ...form, cep: cepDigits, categories: cats, category: cats[0], createdAt: new Date().toISOString() };
+      const docRef = await addDoc(col, Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== undefined)) as Tecnico);
       if (payload.cep && payload.cidade && payload.estado) {
         fetch("/api/geocode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: docRef.id, cep: payload.cep, cidade: payload.cidade, estado: payload.estado, rua: payload.rua, numero: payload.numero, bairro: payload.bairro }) });
       }
@@ -257,13 +515,33 @@ function statusEmoji(s?: Tecnico["status"]) {
         <div className="text-2xl font-bold text-slate-900">Técnicos</div>
         <div className="flex items-center gap-2">
           <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => setOpen(true)}>Novo técnico</button>
+          <input id="xlsx-tecnicos" type="file" accept=".xlsx,.xls" className="hidden" onChange={onExcelFile} />
+          <label htmlFor="xlsx-tecnicos" className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300 cursor-pointer">Importar Excel</label>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por nome" value={qName} onChange={(e) => setQName(e.target.value)} />
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por telefone" value={qPhone} onChange={(e) => setQPhone(e.target.value)} />
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por CPF" value={qCpf} onChange={(e) => setQCpf(e.target.value)} />
+        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por nome, telefone ou CPF" value={qQuery} onChange={(e) => setQQuery(e.target.value)} />
+        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por cidade" value={qCity} onChange={(e) => setQCity(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <button className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => setOpenStates(true)}>Estados</button>
+          {qState && (<span className="text-xs px-2 py-1 rounded bg-slate-200 text-slate-900">UF: {qState}</span>)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="border border-slate-200 rounded-md bg-white p-3">
+          <div className="text-xs text-slate-600">Total de técnicos</div>
+          <div className="text-lg font-bold text-slate-900">{totalCount}</div>
+        </div>
+        <div className="border border-slate-200 rounded-md bg-white p-3">
+          <div className="text-xs text-slate-600">Novos no mês</div>
+          <div className="text-lg font-bold text-slate-900">{newMonthCount}</div>
+        </div>
+        <div className="border border-slate-200 rounded-md bg-white p-3">
+          <div className="text-xs text-slate-600">Ativos</div>
+          <div className="text-lg font-bold text-slate-900">{activeCount}</div>
+        </div>
       </div>
 
       {view === "table" && (
@@ -275,6 +553,13 @@ function statusEmoji(s?: Tecnico["status"]) {
                 <th className="p-2 text-left">Categoria</th>
                 <th className="p-2 text-left">Telefone</th>
                 <th className="p-2 text-left">Cidade/UF</th>
+                <th className="p-2 text-left">
+                  <span className="sr-only">WhatsApp</span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5">
+                    <circle cx="12" cy="12" r="12" fill="#25D366" />
+                    <path fill="#FFFFFF" d="M16.2 12.7c-.2.5-.9.9-1.3 1-.4.1-.9.1-1.5-.1-.3-.1-.8-.3-1.4-.5-2.4-1-3.9-3.4-4.1-3.6-.1-.2-1-1.3-1-2.5s.6-1.7.8-2c.2-.3.4-.3.6-.3s.3 0 .4 0c.1 0 .3-.1.5.4.2.5.6 1.5.7 1.6.1.1.1.2.1.4s-.1.3-.2.4-.2.3-.3.4-.2.2-.1.5c.1.2.5.9 1.1 1.4.8.7 1.4.9 1.6 1 .2.1.3.1.5-.1s.5-.6.7-.8.3-.2.5-.1c.2.1 1.3.6 1.5.7.2.1.3.2.4.3.1.1.1.5-.1 1.1z"/>
+                  </svg>
+                </th>
                 <th className="p-2 text-left">Status</th>
                 
               </tr>
@@ -284,16 +569,34 @@ function statusEmoji(s?: Tecnico["status"]) {
                 <tr key={e.id} className="border-t border-slate-200 hover:bg-slate-50 cursor-pointer" onClick={() => { setDetail(e); setDetailForm({ ...e }); }}>
                   <td className="p-2 text-slate-800">{e.name.toUpperCase()}</td>
                   <td className="p-2 text-slate-800">{displayCategory(e)}</td>
-                  <td className="p-2 text-slate-800">{e.country === "BR" ? e.phoneNumber.slice(2) : `+${e.phoneNumber}`}</td>
+                  <td className="p-2 text-slate-800">{e.country === "BR" ? formatBrPhoneDisplay(e.phoneNumber.slice(2)) : `+${e.phoneNumber}`}</td>
                   <td className="p-2 text-slate-800">{e.cidade}/{e.estado}</td>
-                  <td className="p-2 text-slate-800">{`${statusEmoji(e.status)} ${e.status || "Novo"}`.trim()}</td>
+                  <td className="p-2">
+                    <button aria-label="Abrir WhatsApp" className="p-2 rounded bg-green-500 text-white hover:bg-green-600 inline-flex items-center justify-center" onClick={(ev) => { ev.stopPropagation(); const url = `https://wa.me/${e.phoneNumber}`; window.open(url, "_blank", "noopener,noreferrer"); }}>
+                      <svg aria-hidden="true" viewBox="0 0 24 24" className="w-4 h-4">
+                        <circle cx="12" cy="12" r="12" fill="#25D366" />
+                        <path fill="#FFFFFF" d="M16.2 12.7c-.2.5-.9.9-1.3 1-.4.1-.9.1-1.5-.1-.3-.1-.8-.3-1.4-.5-2.4-1-3.9-3.4-4.1-3.6-.1-.2-1-1.3-1-2.5s.6-1.7.8-2c.2-.3.4-.3.6-.3s.3 0 .4 0c.1 0 .3-.1.5.4.2.5.6 1.5.7 1.6.1.1.1.2.1.4s-.1.3-.2.4-.2.3-.3.4-.2.2-.1.5c.1.2.5.9 1.1 1.4.8.7 1.4.9 1.6 1 .2.1.3.1.5-.1s.5-.6.7-.8.3-.2.5-.1c.2.1 1.3.6 1.5.7.2.1.3.2.4.3.1.1.1.5-.1 1.1z"/>
+                      </svg>
+                    </button>
+                  </td>
+                  <td className="p-2 text-slate-800"><span>{statusEmoji(e.status)}</span> <span>{e.status || "Novo"}</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="flex justify-between items-center mt-2">
             <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={prevPage} disabled={!pageStack.length}>Anterior</button>
-            <div className="text-sm text-slate-700">{items.length} técnicos</div>
+            <div className="flex items-center gap-3">
+              <div className="text-sm text-slate-700">{pageStack.length * pageSize + items.length} de {totalCount}</div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-700">Por página</label>
+                <select className="border border-slate-300 rounded-md px-2 py-1" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            </div>
             <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={nextPage} disabled={!pageEnd}>Próxima</button>
           </div>
         </div>
@@ -305,15 +608,30 @@ function statusEmoji(s?: Tecnico["status"]) {
           <div key={e.id} className="border border-slate-200 rounded-md bg-white p-3" onClick={() => { setDetail(e); setDetailForm({ ...e }); }}>
             <div className="font-semibold text-slate-900">{e.name.toUpperCase()}</div>
             <div className="text-sm text-slate-700">{displayCategory(e)}</div>
-            <div className="text-sm text-slate-700">{e.country === "BR" ? e.phoneNumber.slice(2) : `+${e.phoneNumber}`}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-slate-700">{e.country === "BR" ? formatBrPhoneDisplay(e.phoneNumber.slice(2)) : `+${e.phoneNumber}`}</div>
+              <button aria-label="Abrir WhatsApp" className="ml-2 p-2 rounded bg-green-500 text-white hover:bg-green-600 inline-flex items-center justify-center" onClick={(ev) => { ev.stopPropagation(); const url = `https://wa.me/${e.phoneNumber}`; window.open(url, "_blank", "noopener,noreferrer"); }}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="w-4 h-4">
+                  <circle cx="12" cy="12" r="12" fill="#25D366" />
+                  <path fill="#FFFFFF" d="M16.2 12.7c-.2.5-.9.9-1.3 1-.4.1-.9.1-1.5-.1-.3-.1-.8-.3-1.4-.5-2.4-1-3.9-3.4-4.1-3.6-.1-.2-1-1.3-1-2.5s.6-1.7.8-2c.2-.3.4-.3.6-.3s.3 0 .4 0c.1 0 .3-.1.5.4.2.5.6 1.5.7 1.6.1.1.1.2.1.4s-.1.3-.2.4-.2.3-.3.4-.2.2-.1.5c.1.2.5.9 1.1 1.4.8.7 1.4.9 1.6 1 .2.1.3.1.5-.1s.5-.6.7-.8.3-.2.5-.1c.2.1 1.3.6 1.5.7.2.1.3.2.4.3.1.1.1.5-.1 1.1z"/>
+                </svg>
+              </button>
+            </div>
             <div className="text-sm text-slate-700">{e.cidade}/{e.estado}</div>
-            <div className="text-sm text-slate-700">Status: {`${statusEmoji(e.status)} ${e.status || "Novo"}`.trim()}</div>
+            <div className="text-sm text-slate-700">Status: <span>{statusEmoji(e.status)}</span> <span>{e.status || "Novo"}</span></div>
           </div>
         ))}
       </div>
       <div className="sm:hidden flex justify-between items-center">
         <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={prevPage} disabled={!pageStack.length}>Anterior</button>
-        <div className="text-sm text-slate-700">{items.length} técnicos</div>
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-slate-700">{pageStack.length * pageSize + items.length} de {totalCount}</div>
+          <select className="border border-slate-300 rounded-md px-2 py-1" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
         <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={nextPage} disabled={!pageEnd}>Próxima</button>
       </div>
 
@@ -376,6 +694,8 @@ function statusEmoji(s?: Tecnico["status"]) {
                     </button>
                     <input className="w-full sm:flex-1 border border-slate-300 rounded-md px-3 py-2" placeholder="DDD + número de WhatsApp" inputMode="numeric" value={phoneIntl} onChange={(e) => { const rawAll = e.target.value; const raw = rawAll.replace(/\D/g, ""); const limit = (ddi === "55" || country === "BR") ? 11 : Math.max(6, 15 - String(ddi).length); const nat = raw.slice(0, limit); setPhoneIntl(nat); if (ddi === "55" || country === "BR") { if (nat.length === 10 || nat.length === 11) { const dddDigits = nat.slice(0, 2); const f8 = normalizeFone(nat.slice(2)); if (f8) setForm((prev) => ({ ...prev, phoneNumber: `${ddi}${dddDigits}${f8}`, country })); } } else { if (nat) { const full = `+${ddi}${nat}`; const parsed = parsePhoneNumberFromString(full, country); if (parsed && parsed.isValid()) setForm((prev) => ({ ...prev, phoneNumber: `${ddi}${nat}`, country })); } } }} />
                   </div>
+                  <input className="border border-slate-300 rounded-md px-3 py-2 col-span-2" placeholder="PIX" value={form.pix || ""} onChange={(e) => setForm({ ...form, pix: e.target.value })} />
+                  <input className="border border-slate-300 rounded-md px-3 py-2 col-span-2" placeholder="Observações" value={form.obs || ""} onChange={(e) => setForm({ ...form, obs: e.target.value })} />
                 </div>
               </div>
 
@@ -389,6 +709,7 @@ function statusEmoji(s?: Tecnico["status"]) {
                   <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Bairro" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} />
                   <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
                   <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Estado" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} />
+                  <input className="border border-slate-300 rounded-md px-3 py-2 col-span-2" placeholder="Número/Bloco/Apartamento" value={form.numeroBlocoApartamento || ""} onChange={(e) => setForm({ ...form, numeroBlocoApartamento: e.target.value })} />
                 </div>
               </div>
 
@@ -435,6 +756,29 @@ function statusEmoji(s?: Tecnico["status"]) {
             {openDateCreate && (
               <DateModal value={form.birthDate} onSave={(iso) => setForm((prev) => ({ ...prev, birthDate: iso }))} onClose={() => setOpenDateCreate(false)} />
             )}
+          </div>
+        </div>
+      )}
+
+      {openStates && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center" onClick={() => setOpenStates(false)}>
+          <div className="w-full max-w-2xl bg-white rounded-lg p-4 sm:p-6 space-y-3 shadow-xl max-h-[85vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-slate-900">Estados</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {UF.map(({ uf, name }) => {
+                const cnt = stateCounts[uf] ?? 0;
+                return (
+                  <button key={uf} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2 hover:bg-slate-50" onClick={() => { setQState(uf); setOpenStates(false); }}>
+                    <div className="text-sm text-slate-800">{name} - {uf}</div>
+                    <div className="text-sm font-semibold text-slate-900">{cnt} Técnicos</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex justify-between">
+              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => setOpenStates(false)}>Fechar</button>
+              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => { setQState(""); setOpenStates(false); }}>Limpar filtro</button>
+            </div>
           </div>
         </div>
       )}
@@ -569,6 +913,10 @@ function statusEmoji(s?: Tecnico["status"]) {
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={detailForm!.complemento || ""} onChange={(e) => setDetailForm({ ...detailForm!, complemento: e.target.value })} />
               </div>
               <div className="space-y-1">
+                <div className="text-xs text-slate-600">Número/Bloco/Apartamento</div>
+                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={detailForm!.numeroBlocoApartamento || ""} onChange={(e) => setDetailForm({ ...detailForm!, numeroBlocoApartamento: e.target.value })} />
+              </div>
+              <div className="space-y-1">
                 <div className="text-xs text-slate-600">Bairro</div>
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={detailForm!.bairro} onChange={(e) => setDetailForm({ ...detailForm!, bairro: e.target.value })} />
               </div>
@@ -616,14 +964,21 @@ function statusEmoji(s?: Tecnico["status"]) {
                 </div>
               )}
             </div>
-
-            {detail.geo && (
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-slate-900">Localização</div>
-                <div className="text-sm text-slate-700">Lat: {detail.geo.lat} / Lng: {detail.geo.lng}</div>
-                <a className="inline-block text-blue-600 hover:underline" href={`https://www.google.com/maps?q=${detail.geo.lat},${detail.geo.lng}`} target="_blank" rel="noopener noreferrer">Abrir no Maps</a>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-slate-900">Pagamento</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">PIX</div>
+                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={detailForm!.pix || ""} onChange={(e) => setDetailForm({ ...detailForm!, pix: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-slate-600">Observações</div>
+                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={detailForm!.obs || ""} onChange={(e) => setDetailForm({ ...detailForm!, obs: e.target.value })} />
+                </div>
               </div>
-            )}
+            </div>
+
+            
 
             <div className="flex gap-2 pt-2">
               <button className="flex-1 rounded-md py-2 bg-blue-600 text-white hover:bg-blue-700" onClick={async () => {
@@ -638,7 +993,8 @@ function statusEmoji(s?: Tecnico["status"]) {
                   const cats = (d.categories && d.categories.length) ? d.categories : (d.category ? [d.category] : []);
                   if (!cats.length) { alert("Selecione pelo menos uma categoria"); return; }
                   const payload = { ...d, categories: cats, category: cats[0] };
-                  await updateDoc(doc(db, "registrations", d.id), payload);
+                  const clean = Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== undefined));
+                  await updateDoc(doc(db, "registrations", d.id), clean as Partial<Tecnico>);
                   setItems((prev) => prev.map((t) => (t.id === d.id ? { ...t, ...d } : t)));
                   if (d.cep && d.cidade && d.estado) {
                     fetch("/api/geocode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id, cep: d.cep, cidade: d.cidade, estado: d.estado, rua: d.rua, numero: d.numero, bairro: d.bairro }) });
