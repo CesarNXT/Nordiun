@@ -59,12 +59,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-100">
+    <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm bg-white border border-gray-200 rounded-lg p-6 space-y-5 shadow-xl"
+        className="w-full max-w-sm bg-surface border border-border rounded-lg p-6 space-y-5 shadow-xl"
       >
-        <div className="text-2xl font-bold text-gray-900">Entrar</div>
+        <div className="text-2xl font-bold">Entrar</div>
         {error && <div className="text-red-600 text-sm">{error}</div>}
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-800">Email</label>
@@ -72,7 +72,7 @@ export default function LoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md px-3 py-2 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+            className="w-full rounded-md px-3 py-2 border border-border bg-background text-foreground placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
             name="email"
             autoComplete="email"
             required
@@ -84,7 +84,7 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md px-3 py-2 border border-gray-300 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+            className="w-full rounded-md px-3 py-2 border border-border bg-background text-foreground placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
             name="current-password"
             autoComplete="current-password"
             required

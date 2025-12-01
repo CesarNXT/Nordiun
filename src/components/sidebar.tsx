@@ -2,8 +2,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
+import { useEffect, useState } from "react";
 
 const links = [
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/chamados", label: "Chamados" },
   { href: "/tecnicos", label: "Técnicos" },
   { href: "/mapa-tecnicos", label: "Mapa Técnicos" },
@@ -12,19 +14,39 @@ const links = [
 
 export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      const pref = localStorage.getItem("theme");
+      return pref ? pref === "dark" : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try { document.documentElement.classList.toggle("dark", isDark); } catch {}
+  }, [isDark]);
+  function toggleTheme() {
+    const next = !isDark;
+    setIsDark(next);
+    try { localStorage.setItem("theme", next ? "dark" : "light"); } catch {}
+    try { document.documentElement.classList.toggle("dark", next); } catch {}
+  }
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden sm:block w-64 border-r border-slate-800 bg-slate-900 text-slate-200">
-        <div className="p-4 font-bold text-white">Nordiun</div>
+      <aside className="hidden sm:block w-64 border-r border-border bg-surface text-foreground">
+        <div className="p-4 font-bold flex items-center justify-between">
+          <span>Nordiun</span>
+          <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme}>{isDark ? "Escuro" : "Claro"}</button>
+        </div>
         <nav className="flex flex-col">
           {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
               className={clsx(
-                "px-4 py-2 hover:bg-slate-800",
-                pathname?.startsWith(l.href) ? "bg-slate-800 text-white font-semibold" : ""
+                "px-4 py-2 hover:bg-muted",
+                pathname?.startsWith(l.href) ? "bg-muted font-semibold" : ""
               )}
             >
               {l.label}
@@ -35,16 +57,19 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       {/* Mobile drawer */}
       {open && (
         <div className="sm:hidden fixed inset-0 z-50 flex" onClick={onClose}>
-          <div className="w-64 bg-slate-900 text-slate-200 border-r border-slate-800 h-full" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 font-bold text-white">Nordiun</div>
+          <div className="w-64 bg-surface text-foreground border-r border-border h-full" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 font-bold flex items-center justify-between">
+              <span>Nordiun</span>
+              <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme}>{isDark ? "Escuro" : "Claro"}</button>
+            </div>
             <nav className="flex flex-col">
               {links.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
                   className={clsx(
-                    "px-4 py-2 hover:bg-slate-800",
-                    pathname?.startsWith(l.href) ? "bg-slate-800 text-white font-semibold" : ""
+                    "px-4 py-2 hover:bg-muted",
+                    pathname?.startsWith(l.href) ? "bg-muted font-semibold" : ""
                   )}
                   onClick={onClose}
                 >

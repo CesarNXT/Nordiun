@@ -187,10 +187,14 @@ export default function EmpresasPage() {
   const [qCnpj, setQCnpj] = useState("");
   const [qResp, setQResp] = useState("");
 
+  function normalizeText(s: string): string {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
   const filtered = items.filter((e) => {
-    const nameOk = qName ? (e.name || "").toLowerCase().includes(qName.toLowerCase()) : true;
+    const nameOk = qName ? normalizeText(e.name || "").includes(normalizeText(qName)) : true;
     const cnpjOk = qCnpj ? (e.cnpj || "").replace(/\D/g, "").includes(qCnpj.replace(/\D/g, "")) : true;
-    const respOk = qResp ? ((e.responsaveis?.[0]?.nome || e.contact || "").toLowerCase().includes(qResp.toLowerCase())) : true;
+    const respSource = e.responsaveis?.[0]?.nome || e.contact || "";
+    const respOk = qResp ? normalizeText(respSource).includes(normalizeText(qResp)) : true;
     return nameOk && cnpjOk && respOk;
   });
 
@@ -524,13 +528,22 @@ export default function EmpresasPage() {
               <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Responsável" value={r.nome} onChange={(e) => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) }); }} />
                 <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Número do responsável" inputMode="numeric" value={formatBrPhoneDisplay(r.numero || "")} onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 11); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
-                <div className="flex items-center">
-                  <button type="button" className="w-full px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700" onClick={() => {
-                    const num = String(r.numero || "").replace(/\D/g, "");
-                    if (!num) return;
-                    const url = `https://wa.me/55${num}`;
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  }}>Chamar no WhatsApp</button>
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    aria-label="Chamar no WhatsApp"
+                    className="w-9 h-9 rounded-full bg-green-600 text-white hover:bg-green-700 inline-flex items-center justify-center shadow-sm"
+                    onClick={() => {
+                      const num = String(r.numero || "").replace(/\D/g, "");
+                      if (!num) return;
+                      const url = `https://wa.me/55${num}`;
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="w-5 h-5">
+                      <path fill="#FFFFFF" d="M16.2 12.7c-.2.5-.9.9-1.3 1-.4.1-.9.1-1.5-.1-.3-.1-.8-.3-1.4-.5-2.4-1-3.9-3.4-4.1-3.6-.1-.2-1-1.3-1-2.5s.6-1.7.8-2c.2-.3.4-.3.6-.3s.3 0 .4 0c.1 0 .3-.1.5.4.2.5.6 1.5.7 1.6.1.1.1.2.1.4s-.1.3-.2.4-.2.3-.3.4-.2.2-.1.5c.1.2.5.9 1.1 1.4.8.7 1.4.9 1.6 1 .2.1.3.1.5-.1s.5-.6.7-.8.3-.2.5-.1c.2.1 1.3.6 1.5.7.2.1.3.2.4.3.1.1.1.5-.1 1.1z"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))}

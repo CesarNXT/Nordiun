@@ -204,23 +204,23 @@ export default function MapaTecnicosPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-2xl font-bold text-slate-900">Mapa de Técnicos</div>
+        <div className="text-2xl font-bold text-foreground">Mapa de Técnicos</div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Cidade - UF" value={qLocal} onChange={(e) => setQLocal(e.target.value)} />
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="CEP" value={cep} onChange={(e) => setCep(e.target.value)} />
+        <input className="border border-border rounded-md px-3 py-2" placeholder="Cidade - UF" value={qLocal} onChange={(e) => setQLocal(e.target.value)} />
+        <input className="border border-border rounded-md px-3 py-2" placeholder="CEP" value={cep} onChange={(e) => setCep(e.target.value)} />
       </div>
 
       
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div id={mapDivId} className="h-[420px] sm:h-[520px] border border-slate-300 rounded-md overflow-hidden" />
+        <div id={mapDivId} className="h-[420px] sm:h-[520px] border border-border rounded-md overflow-hidden" />
 
-        <div className="border border-slate-300 rounded-md bg-white overflow-auto">
+        <div className="border border-border rounded-md bg-surface overflow-auto">
           <table className="min-w-full">
             <thead>
-              <tr className="bg-slate-100">
+              <tr className="bg-muted">
                 <th className="p-2 text-left">Nome</th>
                 <th className="p-2 text-left">Cidade/UF</th>
                 <th className="p-2 text-left">Distância</th>
@@ -228,7 +228,7 @@ export default function MapaTecnicosPage() {
             </thead>
             <tbody>
               {nearest.map((t) => (
-                <tr key={t.id} className="border-t border-slate-200 hover:bg-slate-50 cursor-pointer" onClick={() => setSelected(t)}>
+                <tr key={t.id} className="border-t border-border hover:bg-muted cursor-pointer" onClick={() => setSelected(t)}>
                   <td className="p-2">{t.name}</td>
                   <td className="p-2">{t.cidade}/{t.estado}</td>
                   <td className="p-2">{hasCenter && Number.isFinite(t.km) ? `${t.km.toFixed(1)} km` : "-"}</td>
@@ -240,17 +240,17 @@ export default function MapaTecnicosPage() {
       </div>
       {!!selected && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000]" onClick={() => setSelected(null)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-lg font-bold text-slate-900">Detalhes do técnico</div>
-              <button className="text-xs text-slate-700" onClick={() => setSelected(null)}>Fechar</button>
+              <div className="text-lg font-bold text-foreground">Detalhes do técnico</div>
+              <button className="text-xs text-foreground" onClick={() => setSelected(null)}>Fechar</button>
             </div>
             <div className="mt-3 space-y-2">
-              <div className="text-sm text-slate-800">{selected.name}</div>
-              <div className="text-sm text-slate-700">{selected.cidade}/{selected.estado}</div>
-              <div className="text-sm text-slate-700">Status: {selected.status || ""}</div>
-              <div className="text-sm text-slate-700">Telefone: {formatBrPhoneDisplay(selected.phoneNumber || "")}</div>
-              <div className="text-sm text-slate-700">Distância: {hasCenter && Number.isFinite(selected.km || NaN) ? `${(selected.km || 0).toFixed(1)} km` : "-"}</div>
+              <div className="text-sm text-foreground">{selected.name}</div>
+              <div className="text-sm text-foreground">{selected.cidade}/{selected.estado}</div>
+              <div className="text-sm text-foreground">Status: {selected.status || ""}</div>
+              <div className="text-sm text-foreground">Telefone: {formatBrPhoneDisplay(selected.phoneNumber || "")}</div>
+              <div className="text-sm text-foreground">Distância: {hasCenter && Number.isFinite(selected.km || NaN) ? `${(selected.km || 0).toFixed(1)} km` : "-"}</div>
             </div>
             <div className="flex justify-end mt-3">
               {!!(selected.phoneNumber || "").replace(/\D/g, "") && (
@@ -284,7 +284,8 @@ function formatBrPhoneDisplay(nat: string): string {
 function openWhatsApp(nat: string) {
   const digits = (nat || "").replace(/\D/g, "");
   if (!digits) return;
-  const url = `https://wa.me/55${digits}`;
+  const msg = "Olá! Podemos falar sobre um atendimento?";
+  const url = `https://api.whatsapp.com/send?phone=55${digits}&text=${encodeURIComponent(msg)}`;
   try {
     const w = window.open(url, "_blank", "noopener,noreferrer");
     if (!w) window.location.href = url;

@@ -20,6 +20,15 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var pref = localStorage.getItem('theme');
+              var isDark = pref ? pref === 'dark' : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+              document.documentElement.classList.toggle('dark', !!isDark);
+            } catch {}
+          })();
+        ` }} />
         {children}
       </body>
     </html>

@@ -39,15 +39,18 @@ export function DateModal({
   value,
   onSave,
   onClose,
+  maxDate,
 }: {
   value?: string;
   onSave: (iso: string) => void;
   onClose: () => void;
+  maxDate?: Date;
 }) {
   const initial = fromISO(value) || new Date();
   const [year, setYear] = useState(initial.getFullYear());
   const [month, setMonth] = useState(initial.getMonth());
   const [selected, setSelected] = useState<Date | null>(initial);
+  const maxSelectable = maxDate || null;
 
   const daysMatrix = useMemo(() => {
     const first = new Date(year, month, 1);
@@ -79,11 +82,11 @@ export function DateModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm bg-white rounded-xl shadow-2xl p-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-4 border border-slate-200">
         <div className="flex items-center justify-between mb-3">
           <div className="flex gap-2">
             <select
-              className="border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-900"
+              className="border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-900 shadow-sm"
               value={month}
               onChange={(e) => setMonth(parseInt(e.target.value, 10))}
             >
@@ -94,7 +97,7 @@ export function DateModal({
               ))}
             </select>
             <select
-              className="border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-900"
+              className="border border-slate-300 rounded-md px-3 py-2 bg-white text-slate-900 shadow-sm"
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value, 10))}
             >
@@ -106,7 +109,7 @@ export function DateModal({
             </select>
           </div>
           <button
-            className="rounded-full w-8 h-8 flex items-center justify-center bg-slate-200 text-slate-900"
+            className="rounded-full w-8 h-8 flex items-center justify-center bg-slate-200 text-slate-900 hover:bg-slate-300"
             onClick={onClose}
           >
             ×
@@ -130,12 +133,14 @@ export function DateModal({
                   />
                 );
               const isSelected = selected && toISO(cell) === toISO(selected);
+              const disabled = !!maxSelectable && cell > maxSelectable;
               return (
                 <button
                   key={`${rIdx}-${cIdx}`}
-                  className={`h-10 rounded-md border border-slate-300 text-slate-900 ${
-                    isSelected ? "bg-blue-600 text-white border-blue-600" : "bg-white"
-                  }`}
+                  className={`h-10 rounded-md border text-slate-900 transition ${
+                    isSelected ? "bg-blue-600 text-white border-blue-600" : "bg-white border-slate-300 hover:bg-blue-50"
+                  } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                  disabled={disabled}
                   onClick={() => {
                     const iso = toISO(cell);
                     setSelected(cell);
@@ -151,15 +156,15 @@ export function DateModal({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
-            className="px-4 py-2 rounded-md bg-slate-200 text-slate-900"
+            className="px-4 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300"
             onClick={onClose}
           >
             Cancelar
           </button>
           <button
-            className="px-4 py-2 rounded-md bg-blue-600 text-white"
+            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700"
             onClick={() => {
-              if (selected) onSave(toISO(selected));
+              if (selected && (!maxSelectable || selected <= maxSelectable)) onSave(toISO(selected));
               onClose();
             }}
           >

@@ -3,13 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { DateModal } from "@/components/date-modal";
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, onSnapshot, query, orderBy, type CollectionReference, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, FieldValue } from "firebase/firestore";
+import { collection, addDoc, onSnapshot, query, orderBy, type CollectionReference, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, FieldValue, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Play } from "lucide-react";
 
 type EmpresaLite = { id: string; name: string; trackerEnabled?: boolean; valores?: { itRate3h?: number; itHalfDaily?: number; itDaily?: number; itAdditionalHour?: number; itMileage?: number; trackerInstallationRate?: number; itToleranceMinutes?: number }; responsaveis?: { nome: string; numero: string }[] };
 type TecnicoLite = { id: string; name: string; cidade?: string; estado?: string; status?: "Novo" | "Ativo" | "Cancelado" | "Ajudante"; supervisorId?: string; category?: "Rastreador" | "Informatica"; categories?: ("Rastreador" | "Informatica")[]; itRate3h?: number; itAdditionalHour?: number; itDaily?: number; itMileage?: number; trackerMileage?: number; trackerInstallationRate?: number };
-type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; workSessions?: { startIso: string; endIso: string }[]; paymentReceiptsTechnician?: { url: string; path: string }[]; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string };
+type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; workSessions?: { startIso: string; endIso: string }[]; paymentReceiptsTechnician?: { url: string; path: string }[]; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string; ratDocName?: string; ratDocUrl?: string; ratDocPath?: string };
 
 function toDateVal(x: number | string | Timestamp | FieldValue | undefined | null): Date {
   if (!x) return new Date(0);
@@ -76,6 +76,10 @@ export default function ChamadosPage() {
   const [openTimeLog, setOpenTimeLog] = useState(false);
   const [openAddSession, setOpenAddSession] = useState(false);
   const [workSessions, setWorkSessions] = useState<{ startIso: string; endIso: string }[]>([]);
+  const [empresaDocs, setEmpresaDocs] = useState<{ nome: string; url: string; path: string }[]>([]);
+  const [ratDocName, setRatDocName] = useState<string>("");
+  const [ratDocUrl, setRatDocUrl] = useState<string>("");
+  const [ratDocPath, setRatDocPath] = useState<string>("");
   const [sessionDate, setSessionDate] = useState("");
   const [sessionStart, setSessionStart] = useState("");
   const [sessionEnd, setSessionEnd] = useState("");
@@ -101,6 +105,24 @@ export default function ChamadosPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const tecnicoSel = useMemo(() => tecnicos.find((t) => t.id === tecnicoId), [tecnicoId, tecnicos]);
+
+  useEffect(() => {
+    async function loadDocs() {
+      try {
+        setEmpresaDocs([]);
+        setRatDocName(""); setRatDocUrl(""); setRatDocPath("");
+        if (!db || !empresaId) return;
+        const sub = collection(db, `empresas/${empresaId}/documentos`);
+        const snap = await getDocs(sub);
+        const list = snap.docs.map((d) => ({ nome: String((d.data() as { nome?: string }).nome || ""), url: String((d.data() as { url?: string }).url || ""), path: String((d.data() as { path?: string }).path || "") })).filter((x) => x.nome || x.url);
+        const ratFirst = [...list].sort((a, b) => { const ia = /rat/i.test(a.nome) ? 0 : 1; const ib = /rat/i.test(b.nome) ? 0 : 1; return ia - ib; });
+        setEmpresaDocs(ratFirst);
+        const prefer = ratFirst.find((d) => /rat/i.test(d.nome));
+        if (prefer) { setRatDocName(prefer.nome); setRatDocUrl(prefer.url); setRatDocPath(prefer.path); }
+      } catch {}
+    }
+    loadDocs();
+  }, [db, empresaId]);
 
   useEffect(() => {
     if (!db) return;
@@ -160,6 +182,13 @@ export default function ChamadosPage() {
   function setNum(setter: (s: string) => void) {
     return (e: React.ChangeEvent<HTMLInputElement>) => {
       const s = e.target.value.replace(/[^0-9.,]/g, "");
+      setter(s);
+    };
+  }
+
+  function setInt(setter: (s: string) => void) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const s = e.target.value.replace(/[^0-9]/g, "");
       setter(s);
     };
   }
@@ -375,6 +404,9 @@ export default function ChamadosPage() {
       kmTecnico: kmTecnico ? Number(kmTecnico.replace(/,/g, ".")) : undefined,
       kmValorEmpresa: kmValorEmpresa ? Number(kmValorEmpresa.replace(/,/g, ".")) : undefined,
       kmValorTecnico: kmValorTecnico ? Number(kmValorTecnico.replace(/,/g, ".")) : undefined,
+      ratDocName: ratDocName || undefined,
+      ratDocUrl: ratDocUrl || undefined,
+      ratDocPath: ratDocPath || undefined,
     };
     const clean = Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== undefined));
     if (editingId) {
@@ -464,12 +496,12 @@ export default function ChamadosPage() {
   }, [endereco, cep, addrFocused, addrLocked]);
 
   function statusClasses(s: Chamado["status"]) {
-    if (s === "Agendado") return "border-l-4 border-blue-500 bg-blue-50";
-    if (s === "Em andamento") return "border-l-4 border-amber-500 bg-amber-50";
-    if (s === "Concluído") return "border-l-4 border-green-600 bg-green-50";
-    if (s === "Cancelado") return "border-l-4 border-red-600 bg-red-50";
-    if (s === "Reagendado") return "border-l-4 border-purple-500 bg-purple-50";
-    return "border-l-4 border-slate-400 bg-slate-50";
+    if (s === "Agendado") return "border-l-4 border-blue-500 dark:border-blue-300 bg-blue-50 dark:bg-blue-900/25";
+    if (s === "Em andamento") return "border-l-4 border-amber-500 dark:border-amber-300 bg-amber-50 dark:bg-amber-900/25";
+    if (s === "Concluído") return "border-l-4 border-green-600 dark:border-green-400 bg-green-50 dark:bg-green-900/25";
+    if (s === "Cancelado") return "border-l-4 border-red-600 dark:border-red-400 bg-red-50 dark:bg-red-900/25";
+    if (s === "Reagendado") return "border-l-4 border-purple-500 dark:border-purple-300 bg-purple-50 dark:bg-purple-900/25";
+    return "border-l-4 border-slate-400 dark:border-slate-500 bg-slate-50 dark:bg-slate-800/30";
   }
 
   function statusButtonClasses(s: Chamado["status"]) {
@@ -523,6 +555,8 @@ export default function ChamadosPage() {
     setWorkEnd("");
     setWorkSessions([]);
     setError("");
+    setEmpresaDocs([]);
+    setRatDocName(""); setRatDocUrl(""); setRatDocPath("");
   }
 
   function openEdit(c: Chamado & { id: string }) {
@@ -563,19 +597,22 @@ export default function ChamadosPage() {
     setWorkSessions(Array.isArray(c.workSessions) ? c.workSessions : []);
     const arr = Array.isArray(c.paymentReceiptsTechnician) ? c.paymentReceiptsTechnician : ((c.paymentReceiptTechnicianUrl) ? [{ url: c.paymentReceiptTechnicianUrl, path: c.paymentReceiptTechnicianPath || "" }] : []);
     setPaymentReceipts(arr);
+    setRatDocName(c.ratDocName || "");
+    setRatDocUrl(c.ratDocUrl || "");
+    setRatDocPath(c.ratDocPath || "");
     setOpen(true);
   }
 
   return (
-    <div className="space-y-3">
-      <div className="text-2xl font-bold text-slate-900">Chamados</div>
+    <div className="space-y-3 min-h-screen bg-background text-foreground">
+      <div className="text-2xl font-bold text-foreground">Chamados</div>
       <div className="flex gap-2">
         <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => { resetForm(); setError(""); setOpenEmpresa(true); }}>Criar chamado</button>
       </div>
       {openCategory && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setOpenCategory(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Tipo de atendimento</div>
+          <div className="bg-surface text-foreground w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold">Tipo de atendimento</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <label className="inline-flex items-center gap-2 border border-slate-300 rounded-md px-3 py-2">
                 <input type="radio" name="call-cat" checked={categoryChoice === "Informatica"} onChange={() => setCategoryChoice("Informatica")} />
@@ -589,7 +626,7 @@ export default function ChamadosPage() {
               )}
             </div>
             <div className="flex justify-center gap-2 mt-3">
-              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenCategory(false)}>Voltar</button>
+              <button className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => setOpenCategory(false)}>Voltar</button>
               <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => {
                 setCallCategory(categoryChoice);
                 setServiceType(categoryChoice === "Rastreador" ? "Instalação" : "3h");
@@ -603,28 +640,28 @@ export default function ChamadosPage() {
 
       {open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setOpen(false)}>
-          <div className="bg-white w-full max-w-2xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">{editingId ? "Editar chamado" : "Novo chamado"}</div>
+          <div className="bg-surface w-full max-w-2xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">{editingId ? "Editar chamado" : "Novo chamado"}</div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Nome</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={name} onChange={(e) => setName(e.target.value.toUpperCase())} />
+                <div className="text-xs text-foreground">Nome</div>
+                <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={name} onChange={(e) => setName(e.target.value.toUpperCase())} />
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Nº Chamado</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={callNumber} onChange={(e) => setCallNumber(e.target.value)} />
+                <div className="text-xs text-foreground">Nº Chamado</div>
+                <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={callNumber} onChange={(e) => setCallNumber(e.target.value)} />
               </div>
               <div className="space-y-1 sm:col-span-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-600">Endereço</div>
-                  <button type="button" className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setOpenAddress(true)}>Editar</button>
+                  <div className="text-xs text-foreground">Endereço</div>
+                  <button type="button" className="text-xs px-2 py-1 rounded border border-border text-foreground hover:bg-muted" onClick={() => setOpenAddress(true)}>Editar</button>
                 </div>
                 <div className="relative">
-                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={endereco} onFocus={() => { if (!addrLocked) { setAddrFocused(true); setAddrOpen(addrOptions.length > 0); } }} onBlur={() => setTimeout(() => { setAddrFocused(false); setAddrOpen(false); }, 200)} onChange={(e) => setEndereco(e.target.value)} />
+                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={endereco} onFocus={() => { if (!addrLocked) { setAddrFocused(true); setAddrOpen(addrOptions.length > 0); } }} onBlur={() => setTimeout(() => { setAddrFocused(false); setAddrOpen(false); }, 200)} onChange={(e) => setEndereco(e.target.value)} />
                   {addrOpen && addrOptions.length > 0 && (
-                    <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-auto border border-slate-200 bg-white rounded-md shadow z-[65]">
+                    <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-auto border border-border bg-surface rounded-md shadow z-[65]">
                       {addrOptions.map((o) => (
-                        <button key={o.label} className="block w-full text-left px-3 py-2 hover:bg-slate-50" onMouseDown={(e) => e.preventDefault()} onClick={async () => {
+                        <button key={o.label} className="block w-full text-left px-3 py-2 text-foreground hover:bg-muted" onMouseDown={(e) => e.preventDefault()} onClick={async () => {
                           setEndereco(o.label);
                           setAddrLocked(true);
                           setAddrFocused(false);
@@ -660,61 +697,83 @@ export default function ChamadosPage() {
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Responsável</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={contact || "Selecione"} readOnly onClick={() => setOpenContact(true)} />
+                <div className="text-xs text-foreground">Responsável</div>
+                <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={contact || "Selecione"} readOnly onClick={() => setOpenContact(true)} />
               </div>
+              {!!empresaId && (
+                <div className="space-y-1">
+                  <div className="text-xs text-foreground">RAT da empresa</div>
+                  {empresaDocs.length ? (
+                    <div className="flex items-center gap-2">
+                      <select className="border border-border rounded-md px-3 py-2 flex-1 bg-background text-foreground" value={ratDocPath || ""} onChange={(e) => {
+                        const found = empresaDocs.find((d) => d.path === e.target.value);
+                        if (found) { setRatDocName(found.nome); setRatDocUrl(found.url); setRatDocPath(found.path); }
+                        else { setRatDocName(""); setRatDocUrl(""); setRatDocPath(""); }
+                      }}>
+                        <option value="">Selecione</option>
+                        {empresaDocs.map((d) => (<option key={d.path || d.url || d.nome} value={d.path}>{d.nome || d.path || d.url}</option>))}
+                      </select>
+                      {ratDocUrl && (
+                        <a href={ratDocUrl} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded border border-border text-foreground hover:bg-muted">Abrir</a>
+                      )}
+                    </div>
+                  ) : (
+                    <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value="Sem documentos" readOnly />
+                  )}
+                </div>
+              )}
               
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Técnico</div>
-                <input className={`border rounded-md px-3 py-2 w-full ${!tecnicoId && error ? "border-red-600" : "border-slate-300"}`} value={mapTecnico[tecnicoId] ? `${mapTecnico[tecnicoId]}${tecnicoSel?.status ? ` ${statusEmoji(tecnicoSel.status)}` : ""}` : "Selecione"} readOnly onClick={() => setOpenTecnico(true)} />
+                <div className="text-xs text-foreground">Técnico</div>
+                  <input className={`border rounded-md px-3 py-2 w-full ${!tecnicoId && error ? "border-red-600" : "border-border"} bg-background text-foreground`} value={mapTecnico[tecnicoId] ? `${mapTecnico[tecnicoId]}${tecnicoSel?.status ? ` ${statusEmoji(tecnicoSel.status)}` : ""}` : "Selecione"} readOnly onClick={() => setOpenTecnico(true)} />
                 {tecnicoSel?.status === "Ajudante" && (
                   <div className="text-xs text-amber-700">Ajudante vinculado a responsável. {tecnicoSel.supervisorId ? "Selecione o responsável." : "Cadastre o responsável."}</div>
                 )}
                 {tecnicoSel?.status === "Ajudante" && !!tecnicoSel.supervisorId && (
-                  <button type="button" className="text-xs px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setTecnicoId(tecnicoSel.supervisorId!)}>Selecionar responsável</button>
+                  <button type="button" className="text-xs px-2 py-1 rounded border border-border text-foreground hover:bg-muted" onClick={() => setTecnicoId(tecnicoSel.supervisorId!)}>Selecionar responsável</button>
                 )}
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Status</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={status} readOnly onClick={() => setOpenStatus(true)} />
+                <div className="text-xs text-foreground">Status</div>
+                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={status} readOnly onClick={() => setOpenStatus(true)} />
               </div>
               <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <div className="text-xs text-slate-600">Data do atendimento</div>
-                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={formatDateBr(appointmentDate) || "Selecione"} readOnly onClick={() => setOpenDate(true)} />
+                  <div className="text-xs text-foreground">Data do atendimento</div>
+                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={formatDateBr(appointmentDate) || "Selecione"} readOnly onClick={() => setOpenDate(true)} />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-slate-600">Hora do atendimento</div>
-                  <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={formatTimeBr(appointmentTime) || "Selecione"} readOnly onClick={() => setOpenTime(true)} />
+                  <div className="text-xs text-foreground">Hora do atendimento</div>
+                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={formatTimeBr(appointmentTime) || "Selecione"} readOnly onClick={() => setOpenTime(true)} />
                 </div>
               </div>
             <div className="space-y-1">
-              <div className="text-xs text-slate-600">Controle de tempo</div>
+              <div className="text-xs text-foreground">Controle de tempo</div>
               <div className="flex items-center gap-2">
                 <button type="button" className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 inline-flex items-center gap-2" onClick={() => setOpenTimeLog(true)}>
                   <Play className="w-4 h-4" />
                   <span>Log de tempo</span>
                 </button>
-                <span className="text-sm text-slate-700">{formatDuration(totalDurationMs(workSessions)) || "0m 0s"}</span>
+                <span className="text-sm text-foreground">{formatDuration(totalDurationMs(workSessions)) || "0m 0s"}</span>
               </div>
             </div>
             
             <div className="space-y-1">
-              <div className="text-xs text-slate-600">Tipo de chamado</div>
-              <input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={serviceType} readOnly onClick={() => setOpenServiceType(true)} />
+              <div className="text-xs text-foreground">Tipo de chamado</div>
+              <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={serviceType} readOnly onClick={() => setOpenServiceType(true)} />
             </div>
             {callCategory === "Rastreador" && (
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Unidades</div>
-                <input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={units} onChange={setNum(setUnits)} />
+                <div className="text-xs text-foreground">Unidades</div>
+                <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="numeric" value={units} onChange={setNum(setUnits)} />
               </div>
             )}
             <div className="sm:col-span-2 flex items-center gap-2">
-              <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => {
+              <button type="button" className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => {
                 prefillFinance();
                 setOpenFinance(true);
               }}>Financeiro</button>
-              <div className="text-xs text-slate-600">Abrir detalhes de valores</div>
+              <div className="text-xs text-foreground">Abrir detalhes de valores</div>
             </div>
             </div>
             
@@ -725,7 +784,9 @@ export default function ChamadosPage() {
               {editingId && (
                 <button className="px-3 py-2 rounded-md bg-red-600 text-white hover:bg-red-700" onClick={async () => { if (db && editingId) { await deleteDoc(doc(db, "chamados", editingId)); resetForm(); setOpen(false); } }}>Excluir</button>
               )}
-              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => { setOpen(false); setOpenCategory(true); }}>Voltar</button>
+              {!editingId && (
+                <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => { setOpen(false); setOpenCategory(true); }}>Voltar</button>
+              )}
               <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" onClick={createCall} disabled={!name.trim() || !empresaId || !tecnicoId || (tecnicoSel?.status === "Ajudante")}>Salvar</button>
             </div>
           </div>
@@ -736,25 +797,25 @@ export default function ChamadosPage() {
 
       {openFinance && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenFinance(false)}>
-          <div className="bg-white w-full max-w-3xl max-h-[80vh] rounded-lg shadow-xl flex flex-col overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-slate-200">
-              <div className="text-lg font-bold text-slate-900">Financeiro do atendimento</div>
+          <div className="bg-surface w-full max-w-3xl max-h-[80vh] rounded-lg shadow-xl flex flex-col overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-border">
+              <div className="text-lg font-bold text-foreground">Financeiro do atendimento</div>
             </div>
             <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1 px-2 sm:px-4">
-              <div className="space-y-1"><div className="text-xs text-slate-600">Valor que a empresa paga</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={valorEmpresa} onChange={setNum(setValorEmpresa)} /></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Valor pago ao técnico</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={valorTecnico} onChange={setNum(setValorTecnico)} /></div>
+              <div className="space-y-1"><div className="text-xs text-foreground">Valor que a empresa paga</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="decimal" value={valorEmpresa} onChange={setNum(setValorEmpresa)} /></div>
+              <div className="space-y-1"><div className="text-xs text-foreground">Valor pago ao técnico</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="decimal" value={valorTecnico} onChange={setNum(setValorTecnico)} /></div>
               <div className="space-y-1 sm:col-span-2">
                 <label className="inline-flex items-center gap-2">
                   <input type="checkbox" checked={hasKm} onChange={() => setHasKm((v) => !v)} />
-                  <span className="text-xs text-slate-700">Tem deslocamento (KM)</span>
+                  <span className="text-xs text-foreground">Tem deslocamento (KM)</span>
                 </label>
               </div>
               {hasKm && (
                 <>
-                  <div className="space-y-1"><div className="text-xs text-slate-600">KM cobrados da empresa</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={kmEmpresa} onChange={setNum(setKmEmpresa)} /></div>
-                  <div className="space-y-1"><div className="text-xs text-slate-600">KM pagos ao técnico</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={kmTecnico} onChange={setNum(setKmTecnico)} /></div>
-                  <div className="space-y-1"><div className="text-xs text-slate-600">Valor por KM (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={kmValorEmpresa} onChange={setNum(setKmValorEmpresa)} /></div>
-                  <div className="space-y-1"><div className="text-xs text-slate-600">Valor por KM (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="decimal" value={kmValorTecnico} onChange={setNum(setKmValorTecnico)} /></div>
+                  <div className="space-y-1"><div className="text-xs text-foreground">KM cobrados da empresa</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="numeric" value={kmEmpresa} onChange={setInt(setKmEmpresa)} /></div>
+                  <div className="space-y-1"><div className="text-xs text-foreground">KM pagos ao técnico</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="numeric" value={kmTecnico} onChange={setInt(setKmTecnico)} /></div>
+                  <div className="space-y-1"><div className="text-xs text-foreground">Valor por KM (empresa)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="decimal" value={kmValorEmpresa} onChange={setNum(setKmValorEmpresa)} /></div>
+                  <div className="space-y-1"><div className="text-xs text-foreground">Valor por KM (técnico)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="decimal" value={kmValorTecnico} onChange={setNum(setKmValorTecnico)} /></div>
                 </>
               )}
 
@@ -785,45 +846,26 @@ export default function ChamadosPage() {
                 const margem = totalEmpresa - totalTecnico;
                 return (
                   <>
-                    <div className="space-y-1"><div className="text-xs text-slate-600">Total KM (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" readOnly value={totalKmEmpresa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
-                    <div className="space-y-1"><div className="text-xs text-slate-600">Total KM (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" readOnly value={totalKmTecnico.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
-                    <div className="space-y-1"><div className="text-xs text-slate-600">Total atendimento (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" readOnly value={totalAtendimentoEmpresa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
-                    <div className="space-y-1"><div className="text-xs text-slate-600">Total atendimento (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" readOnly value={totalAtendimentoTecnico.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
-                    <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Margem</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" readOnly value={margem.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+                    <div className="space-y-1"><div className="text-xs text-foreground">Total KM (empresa)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" readOnly value={totalKmEmpresa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+                    <div className="space-y-1"><div className="text-xs text-foreground">Total KM (técnico)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" readOnly value={totalKmTecnico.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+                    <div className="space-y-1"><div className="text-xs text-foreground">Total atendimento (empresa)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" readOnly value={totalAtendimentoEmpresa.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+                    <div className="space-y-1"><div className="text-xs text-foreground">Total atendimento (técnico)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" readOnly value={totalAtendimentoTecnico.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+                    <div className="space-y-1 sm:col-span-2"><div className="text-xs text-foreground">Margem</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" readOnly value={margem.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} /></div>
+              
                   </>
                 );
               })()}
 
-              <div className="sm:col-span-2 mt-2">
-                <div className="text-sm font-semibold text-slate-900">Tabela por horas</div>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <div className="text-xs text-slate-600">Hora</div>
-                  <div className="text-xs text-slate-600">Empresa</div>
-                  <div className="text-xs text-slate-600">Técnico</div>
-                  {[1,2,3,4,5,6,7,8,9].map((h) => {
-                    const ve = calcHourRate("empresa", h);
-                    const vt = calcHourRate("tecnico", h);
-                    return (
-                      <div key={h} className="contents">
-                        <div className="text-sm text-slate-800">{h}h</div>
-                        <div className="text-sm text-slate-800">{ve ? toCurrency(ve) : "-"}</div>
-                        <div className="text-sm text-slate-800">{vt ? toCurrency(vt) : "-"}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="text-xs text-slate-600 mt-1">9h equivale à diária (8h de serviço + 1h de almoço). Acima de 9h utiliza hora adicional.</div>
-              </div>
             </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 px-2 sm:px-4">
-                <div className="space-y-1"><div className="text-xs text-slate-600">Data de pagamento (empresa)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={paymentDateCompany ? paymentDateCompany.substring(0,10) : ""} onChange={(e) => setPaymentDateCompany(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
-                <div className="space-y-1"><div className="text-xs text-slate-600">Data de pagamento (técnico)</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={paymentDateTechnician ? paymentDateTechnician.substring(0,10) : ""} onChange={(e) => setPaymentDateTechnician(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
-                <div className="space-y-1"><div className="text-xs text-slate-600">Status pagamento (empresa)</div><select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={paymentStatusCompany} onChange={(e) => setPaymentStatusCompany(e.target.value as Chamado["paymentStatusCompany"]) }><option>A pagar</option><option>Pago</option><option>Pendente</option><option>Cancelado</option></select></div>
-                <div className="space-y-1"><div className="text-xs text-slate-600">Status pagamento (técnico)</div><select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={paymentStatusTechnician} onChange={(e) => setPaymentStatusTechnician(e.target.value as Chamado["paymentStatusTechnician"]) }><option>A pagar</option><option>Pago</option><option>Pendente</option><option>Cancelado</option></select></div>
+                <div className="space-y-1"><div className="text-xs text-foreground">Data de pagamento (empresa)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" type="date" value={paymentDateCompany ? paymentDateCompany.substring(0,10) : ""} onChange={(e) => setPaymentDateCompany(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
+                <div className="space-y-1"><div className="text-xs text-foreground">Data de pagamento (técnico)</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" type="date" value={paymentDateTechnician ? paymentDateTechnician.substring(0,10) : ""} onChange={(e) => setPaymentDateTechnician(e.target.value ? new Date(e.target.value).toISOString() : "")} /></div>
+                <div className="space-y-1"><div className="text-xs text-foreground">Status pagamento (empresa)</div><select className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={paymentStatusCompany} onChange={(e) => setPaymentStatusCompany(e.target.value as Chamado["paymentStatusCompany"]) }><option>A pagar</option><option>Pago</option><option>Pendente</option><option>Cancelado</option></select></div>
+                <div className="space-y-1"><div className="text-xs text-foreground">Status pagamento (técnico)</div><select className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={paymentStatusTechnician} onChange={(e) => setPaymentStatusTechnician(e.target.value as Chamado["paymentStatusTechnician"]) }><option>A pagar</option><option>Pago</option><option>Pendente</option><option>Cancelado</option></select></div>
                 <div className="sm:col-span-2 space-y-1">
-                  <div className="text-xs text-slate-600">Comprovante de pagamento (técnico)</div>
+                  <div className="text-xs text-foreground">Comprovante de pagamento (técnico)</div>
                   <div className="flex items-center gap-2">
-                    <input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="file" multiple onChange={async (e) => {
+                    <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" type="file" multiple onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (!files.length || !editingId || !storage) return;
                       setUploadingReceipt(true);
@@ -848,13 +890,13 @@ export default function ChamadosPage() {
                   {!!paymentReceipts.length && (
                     <div className="mt-3 space-y-2">
                       {paymentReceipts.map((rec, idx) => (
-                        <div key={idx} className="border border-slate-200 rounded-md overflow-hidden p-2">
+                        <div key={idx} className="border border-border rounded-md overflow-hidden p-2">
                           {isPdf(rec.url) ? (
-                            <div className="w-full max-w-xs h-40 mx-auto bg-slate-100">
+                            <div className="w-full max-w-xs h-40 mx-auto bg-muted">
                               <iframe src={rec.url} className="w-full h-full" />
                             </div>
                           ) : (
-                            <div className="relative w-full max-w-xs h-40 mx-auto bg-slate-100">
+                            <div className="relative w-full max-w-xs h-40 mx-auto bg-muted">
                               <Image src={rec.url} alt="Comprovante" fill className="object-contain" sizes="256px" />
                             </div>
                           )}
@@ -872,27 +914,27 @@ export default function ChamadosPage() {
                     </div>
                   )}
                   {!editingId && (
-                    <div className="text-xs text-slate-600">Disponível após salvar o chamado</div>
+                    <div className="text-xs text-foreground">Disponível após salvar o chamado</div>
                   )}
                 </div>
               </div>
-            <div className="p-4 border-t border-slate-200 flex justify-end gap-2">
-              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenFinance(false)}>Fechar</button>
+            <div className="p-4 border-t border-border flex justify-end gap-2">
+              <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => setOpenFinance(false)}>Fechar</button>
             </div>
           </div>
         </div>
       )}
       {openWorkTime && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenWorkTime(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Tempo de atendimento</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Tempo de atendimento</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Início</div>
+                <div className="text-xs text-slate-700 dark:text-slate-300">Início</div>
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" placeholder="HH:MM" value={workStart} onChange={(e) => setWorkStart(normalizeHHMMInput(e.target.value))} onBlur={(e) => { const v = normalizeHHMMInput(e.target.value); setWorkStart(isValidHHMM(v) ? v : ""); }} />
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Fim</div>
+                <div className="text-xs text-slate-700 dark:text-slate-300">Fim</div>
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" placeholder="HH:MM" value={workEnd} onChange={(e) => setWorkEnd(normalizeHHMMInput(e.target.value))} onBlur={(e) => { const v = normalizeHHMMInput(e.target.value); setWorkEnd(isValidHHMM(v) ? v : ""); }} />
               </div>
             </div>
@@ -904,16 +946,16 @@ export default function ChamadosPage() {
       )}
       {openAddress && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenAddress(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Endereço do atendimento</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Endereço do atendimento</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-              <div className="space-y-1"><div className="text-xs text-slate-600">CEP</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" placeholder="00000-000" inputMode="numeric" value={cep} onChange={(e) => setCep(e.target.value)} /></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Estado</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={estado} onChange={(e) => setEstado(e.target.value)} /></div>
-              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Cidade</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={cidade} onChange={(e) => setCidade(e.target.value)} /></div>
-              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Rua</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={rua} onChange={(e) => setRua(e.target.value)} /></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Número</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={numero} onChange={(e) => setNumero(e.target.value)} /></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Complemento</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
-              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Bairro</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={bairro} onChange={(e) => setBairro(e.target.value)} /></div>
+              <div className="space-y-1"><div className="text-xs text-slate-700 dark:text-slate-300">CEP</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" placeholder="00000-000" inputMode="numeric" value={cep} onChange={(e) => setCep(e.target.value)} /></div>
+              <div className="space-y-1"><div className="text-xs text-slate-700 dark:text-slate-300">Estado</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={estado} onChange={(e) => setEstado(e.target.value)} /></div>
+              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-700 dark:text-slate-300">Cidade</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={cidade} onChange={(e) => setCidade(e.target.value)} /></div>
+              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-700 dark:text-slate-300">Rua</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={rua} onChange={(e) => setRua(e.target.value)} /></div>
+              <div className="space-y-1"><div className="text-xs text-slate-700 dark:text-slate-300">Número</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={numero} onChange={(e) => setNumero(e.target.value)} /></div>
+              <div className="space-y-1"><div className="text-xs text-slate-700 dark:text-slate-300">Complemento</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={complemento} onChange={(e) => setComplemento(e.target.value)} /></div>
+              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-700 dark:text-slate-300">Bairro</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" value={bairro} onChange={(e) => setBairro(e.target.value)} /></div>
             </div>
             <div className="flex justify-end gap-2 mt-3">
               <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenAddress(false)}>Cancelar</button>
@@ -924,17 +966,18 @@ export default function ChamadosPage() {
       )}
       {openEmpresa && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenEmpresa(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Selecionar empresa</div>
-            <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qEmpresa} onChange={(e) => setQEmpresa(e.target.value)} />
-            <div className="mt-2 max-h-64 overflow-auto space-y-1">
-              {empresas.filter((e) => (e.name || "").toLowerCase().includes(qEmpresa.toLowerCase())).map((e) => (
-                <button key={e.id} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { 
-                  setEmpresaId(e.id); 
-                  setOpenEmpresa(false); 
-                  if (e.trackerEnabled) { setCategoryChoice("Informatica"); setOpenCategory(true); } 
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Selecionar empresa</div>
+            <div className="mt-2 max-h-64 overflow-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {empresas.slice(0, 20).map((e) => (
+                <button key={e.id} className="text-left border border-slate-200 rounded-md p-3 hover:bg-slate-50" onClick={() => {
+                  setEmpresaId(e.id);
+                  setOpenEmpresa(false);
+                  if (e.trackerEnabled) { setCategoryChoice("Informatica"); setOpenCategory(true); }
                   else { setCallCategory("Informatica"); setServiceType("3h"); setOpen(true); }
-                }}>{e.name}</button>
+                }}>
+                  <div className="font-semibold text-slate-900">{e.name}</div>
+                </button>
               ))}
             </div>
           </div>
@@ -943,11 +986,11 @@ export default function ChamadosPage() {
 
       {openTecnico && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTecnico(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Selecionar técnico</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Selecionar técnico</div>
             <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qTecnico} onChange={(e) => setQTecnico(e.target.value)} />
             <div className="mt-2 max-h-64 overflow-auto space-y-1">
-              {tecnicos.filter((t) => (t.name || "").toLowerCase().includes(qTecnico.toLowerCase())).map((t) => (
+              {tecnicos.filter((t) => String(t.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(String(qTecnico).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))).map((t) => (
                 <button key={t.id} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setTecnicoId(t.id); setOpenTecnico(false); }}>{displayTecnico(t)}{t.status ? ` ${statusEmoji(t.status)}` : ""}</button>
               ))}
             </div>
@@ -957,11 +1000,11 @@ export default function ChamadosPage() {
 
       {openContact && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenContact(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Selecionar responsável</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Selecionar responsável</div>
             <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qContact} onChange={(e) => setQContact(e.target.value)} />
             <div className="mt-2 max-h-64 overflow-auto space-y-1">
-              {(empresas.find((e) => e.id === empresaId)?.responsaveis || []).filter((r) => (r.nome || "").toLowerCase().includes(qContact.toLowerCase())).map((r, idx) => (
+              {(empresas.find((e) => e.id === empresaId)?.responsaveis || []).filter((r) => String(r.nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(String(qContact).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))).map((r, idx) => (
                 <button key={`${r.nome}-${idx}`} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setContact(r.nome); setContactNumber(r.numero); setOpenContact(false); }}>{r.nome}{r.numero ? ` • ${r.numero}` : ""}</button>
               ))}
               {!(empresas.find((e) => e.id === empresaId)?.responsaveis || []).length && (
@@ -974,8 +1017,8 @@ export default function ChamadosPage() {
 
       {openStatus && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenStatus(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Selecionar status</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Selecionar status</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {["Agendado","Em andamento","Concluído","Cancelado","Reagendado","Invalido"].map((s) => (
                 <button key={s} className={`px-3 py-2 border rounded hover:bg-slate-100 ${statusButtonClasses(s as Chamado["status"])}`} onClick={() => { setStatus(s as Chamado["status"]); setOpenStatus(false); }}>{s}</button>
@@ -991,8 +1034,8 @@ export default function ChamadosPage() {
 
       {openTime && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTime(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Selecionar hora</div>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Selecionar hora</div>
             <select className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" value={appointmentTime || ""} onChange={(e) => { setAppointmentTime(e.target.value); setOpenTime(false); }}>
               <option value="">Selecione</option>
               {times.map((t: string) => (<option key={t} value={t}>{t}</option>))}
@@ -1005,7 +1048,7 @@ export default function ChamadosPage() {
       {openServiceType && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenServiceType(false)}>
           <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Tipo de chamado</div>
+            <div className="text-lg font-bold text-foreground">Tipo de chamado</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {(callCategory === "Informatica" ? ["1h","2h","3h","Meia diária","Diária"] : ["Instalação"]).map((opt) => (
                 <button key={opt} className="px-3 py-2 border border-slate-300 rounded hover:bg-slate-100" onClick={() => { setServiceType(opt); setOpenServiceType(false); }}>{opt}</button>
@@ -1017,10 +1060,10 @@ export default function ChamadosPage() {
 
       {openTimeLog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTimeLog(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-lg font-bold text-slate-900">Log de controle de tempo</div>
-              <button className="text-xs text-slate-600">Exportar para Excel</button>
+              <div className="text-lg font-bold text-foreground">Log de controle de tempo</div>
+              <button className="text-xs text-slate-700 dark:text-slate-300">Exportar para Excel</button>
             </div>
             <div className="mt-4">
               <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={() => setOpenAddSession(true)}>+ Adicionar sessão manualmente</button>
@@ -1032,10 +1075,10 @@ export default function ChamadosPage() {
                   const e = new Date(s.endIso);
                   const ms = Math.max(0, e.getTime() - d.getTime());
                   return (
-                    <div key={`${s.startIso}-${idx}`} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2">
-                      <div className="text-sm text-slate-800">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div key={`${s.startIso}-${idx}`} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
+                      <div className="text-sm text-foreground">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
                       <div className="flex items-center gap-3">
-                        <div className="text-sm text-slate-700">{formatDuration(ms)}</div>
+                        <div className="text-sm text-foreground">{formatDuration(ms)}</div>
                         <button className="text-xs text-blue-600 hover:underline" onClick={() => openEditSession(idx)}>Editar</button>
                         <button className="text-xs text-red-600 hover:underline" onClick={() => removeSession(idx)}>Remover</button>
                       </div>
@@ -1045,7 +1088,7 @@ export default function ChamadosPage() {
               </div>
             )}
             <div className="flex justify-end gap-2 mt-3">
-              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenTimeLog(false)}>Fechar</button>
+              <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => setOpenTimeLog(false)}>Fechar</button>
             </div>
           </div>
         </div>
@@ -1053,26 +1096,26 @@ export default function ChamadosPage() {
 
       {openAddSession && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setOpenAddSession(false)}>
-          <div className="bg-white w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <div className="text-lg font-bold text-slate-900">Adicionar sessão</div>
+              <div className="text-lg font-bold text-foreground">Adicionar sessão</div>
               <button className="text-xs text-slate-700" onClick={() => setOpenAddSession(false)}>Voltar</button>
             </div>
             <div className="mt-3 space-y-3">
               <div className="space-y-1">
-                <div className="text-xs text-slate-600">Data</div>
+                <div className="text-xs text-slate-700 dark:text-slate-300">Data</div>
                 <input className="border border-slate-300 rounded-md px-3 py-2 w-full" type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <div className="text-xs text-slate-600">Começar em</div>
+                  <div className="text-xs text-slate-700 dark:text-slate-300">Começar em</div>
                   <select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={sessionStart} onChange={(e) => setSessionStart(e.target.value)}>
                     <option value="">Selecione</option>
                     {times.map((t: string) => (<option key={`start-${t}`} value={t}>{t}</option>))}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <div className="text-xs text-slate-600">Terminar em</div>
+                  <div className="text-xs text-slate-700 dark:text-slate-300">Terminar em</div>
                   <select className="border border-slate-300 rounded-md px-3 py-2 w-full" value={sessionEnd} onChange={(e) => setSessionEnd(e.target.value)}>
                     <option value="">Selecione</option>
                     {times.map((t: string) => (<option key={`end-${t}`} value={t}>{t}</option>))}
@@ -1098,9 +1141,9 @@ export default function ChamadosPage() {
       
 
       <div className="mt-4 hidden sm:block overflow-x-auto">
-        <table className="min-w-full border border-slate-200 bg-white">
+        <table className="min-w-full border border-border bg-surface rounded-md overflow-hidden">
           <thead>
-            <tr className="bg-slate-100">
+            <tr className="bg-muted">
               <th className="p-2 text-left">Nome</th>
               <th className="p-2 text-left">Empresa</th>
               <th className="p-2 text-left">Técnico</th>
@@ -1117,13 +1160,13 @@ export default function ChamadosPage() {
               const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
               const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
               return (
-                <tr key={c.id} className={`border-t border-slate-200 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-                  <td className="p-2 text-slate-800">{c.name}</td>
-                  <td className="p-2 text-slate-800">{empresaPrimeira}</td>
-                  <td className="p-2 text-slate-800">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
-                  <td className="p-2 text-slate-800">{dataHora}</td>
-                  <td className="p-2 text-slate-800">{local || "—"}</td>
-                  <td className="p-2 text-slate-800">{tipo}</td>
+                <tr key={c.id} className={`border-t border-border ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
+                  <td className="p-2 text-foreground">{c.name}</td>
+                  <td className="p-2 text-foreground">{empresaPrimeira}</td>
+                  <td className="p-2 text-foreground">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
+                  <td className="p-2 text-foreground">{dataHora}</td>
+                  <td className="p-2 text-foreground">{local || "—"}</td>
+                  <td className="p-2 text-foreground">{tipo}</td>
                 </tr>
               );
             })}
@@ -1138,13 +1181,13 @@ export default function ChamadosPage() {
           const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
           const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
           return (
-            <div key={c.id} className={`border rounded-md p-3 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-              <div className="font-semibold text-slate-900">{c.name}</div>
-              <div className="text-sm text-slate-700">Empresa: {empresaPrimeira}</div>
-              <div className="text-sm text-slate-700">Técnico: {mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
-              <div className="text-sm text-slate-700">Data e hora: {dataHora}</div>
-              <div className="text-sm text-slate-700">Local: {local || "—"}</div>
-              <div className="text-sm text-slate-700">Tipo: {tipo}</div>
+            <div key={c.id} className={`border border-border rounded-md p-3 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
+              <div className="font-semibold text-foreground">{c.name}</div>
+              <div className="text-sm text-foreground">Empresa: {empresaPrimeira}</div>
+              <div className="text-sm text-foreground">Técnico: {mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
+              <div className="text-sm text-foreground">Data e hora: {dataHora}</div>
+              <div className="text-sm text-foreground">Local: {local || "—"}</div>
+              <div className="text-sm text-foreground">Tipo: {tipo}</div>
             </div>
           );
         })}

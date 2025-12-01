@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +14,7 @@ import { parsePhoneNumberFromString, getCountries, getCountryCallingCode, type C
   const schema = z
   .object({
     category: z.enum(["Rastreador", "Informatica"]),
-    name: z.string().min(2),
+    name: z.string().min(2).refine((s) => s.trim().split(/\s+/).length >= 2, "Informe seu nome completo (nome e sobrenome)"),
     cpf: z.string().min(11),
     email: z.string().email(),
     rg: z.string().min(5),
@@ -47,17 +49,40 @@ import { parsePhoneNumberFromString, getCountries, getCountryCallingCode, type C
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["phoneNumber"], message: "Telefone inválido para o país selecionado" });
       }
     }
+    const m = String(data.birthDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Data de nascimento inválida" });
+      return;
+    }
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const d = parseInt(m[3], 10);
+    const dob = new Date(y, mo, d);
+    if (isNaN(dob.getTime())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Data de nascimento inválida" });
+      return;
+    }
+    const now = new Date();
+    let age = now.getFullYear() - y;
+    const hadBirthday = (now.getMonth() > mo) || (now.getMonth() === mo && now.getDate() >= d);
+    if (!hadBirthday) age--;
+    if (age < 18) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "Necessário ter 18 anos ou mais" });
+    }
   });
 
 type FormData = z.infer<typeof schema>;
 
 export default function CadastroPage() {
   const [step, setStep] = useState(1);
+  const [showIntro, setShowIntro] = useState(true);
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     setValue,
     trigger,
+    watch,
     formState: { isSubmitting, errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -91,6 +116,44 @@ export default function CadastroPage() {
   const [verifyCode, setVerifyCode] = useState("");
   const [verifyError, setVerifyError] = useState("");
   const [verifySeconds, setVerifySeconds] = useState(0);
+  const [updateSeconds, setUpdateSeconds] = useState(0);
+  const [finalRedirect, setFinalRedirect] = useState(true);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cadastroDraft");
+      if (!raw) return;
+      const data = JSON.parse(raw) as Partial<FormData>;
+      const keys: (keyof FormData)[] = [
+        "category","name","cpf","rg","birthDate","country","phoneNumber","cep","rua","numero","complemento","bairro","cidade","estado","itRate3h","itAdditionalHour","itDaily","itMileage","trackerMileage","trackerInstallationRate","pix","email"
+      ];
+      for (const k of keys) {
+        const v = data[k] as FormData[typeof k] | undefined;
+        if (v !== undefined) setValue(k, v);
+      }
+      if (data.birthDate) setBirthDisplay(formatDateBr(data.birthDate));
+      if (data.category) setCategory(data.category);
+      if (data.cep) setCep(String(data.cep));
+      if (data.country) setCountry(data.country as CountryCode);
+      if (data.phoneNumber) {
+        const digits = String(data.phoneNumber).replace(/\D/g, "");
+        if (digits.startsWith("55")) {
+          const nat = digits.slice(2);
+          setDdi("55");
+          setPhoneIntl(nat);
+        }
+      }
+    } catch {}
+  }, [setValue]);
+
+  useEffect(() => {
+    const sub = watch((values) => {
+      try {
+        localStorage.setItem("cadastroDraft", JSON.stringify(values));
+      } catch {}
+    });
+    return () => { try { sub.unsubscribe(); } catch {} };
+  }, [watch]);
 
   useEffect(() => {
     if (step === 7 && verifySeconds <= 0 && verifyRequested) {
@@ -104,23 +167,8 @@ export default function CadastroPage() {
   }, [verifySeconds, step, verifyRequested]);
 
   type InfoKeys = "itRate3h" | "itAdditionalHour" | "itDaily" | "itMileage" | "trackerMileage";
-  const [info, setInfo] = useState<Record<InfoKeys, boolean>>({
-    itRate3h: false,
-    itAdditionalHour: false,
-    itDaily: false,
-    itMileage: false,
-    trackerMileage: false,
-  });
-
-  const infoTimer = useRef<number | null>(null);
-  function flashInfo(key: InfoKeys) {
-    setInfo({ itRate3h: false, itAdditionalHour: false, itDaily: false, itMileage: false, trackerMileage: false });
-    setInfo((prev) => ({ ...prev, [key]: true }));
-    if (infoTimer.current) clearTimeout(infoTimer.current);
-    infoTimer.current = setTimeout(() => {
-      setInfo((prev) => ({ ...prev, [key]: false }));
-    }, 4000) as unknown as number;
-  }
+  const [openInfo, setOpenInfo] = useState<InfoKeys | null>(null);
+  function flashInfo(key: InfoKeys) { setOpenInfo(key); }
 
   function formatDisplay(s: string) {
     const digits = s.replace(/\D/g, "");
@@ -128,6 +176,21 @@ export default function CadastroPage() {
     const cents = parseInt(digits, 10);
     const amount = cents / 100;
     return amount.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function ageFromIso(iso?: string): number {
+    if (!iso) return 0;
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return 0;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const dob = new Date(y, mo, d);
+    if (isNaN(dob.getTime())) return 0;
+    const now = new Date();
+    let age = now.getFullYear() - y;
+    const hadBirthday = (now.getMonth() > mo) || (now.getMonth() === mo && now.getDate() >= d);
+    if (!hadBirthday) age--;
+    return age;
   }
 
   function handleCurrency(field: keyof FormData) {
@@ -146,6 +209,8 @@ export default function CadastroPage() {
   }
   function formatDateBr(iso?: string) {
     if (!iso) return "";
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "";
     return d.toLocaleDateString("pt-BR");
@@ -165,8 +230,55 @@ export default function CadastroPage() {
     ensureRegistrations();
   }, []);
 
-  const supportWhats = (process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || "1152429323").replace(/\D/g, "");
+  const supportWhats = (process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || "551152429323").replace(/\D/g, "");
+  const supportWhatsTarget = supportWhats.startsWith("55") ? supportWhats : `55${supportWhats}`;
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [redirectSeconds, setRedirectSeconds] = useState(5);
+
+  useEffect(() => {
+    if (step !== 6) return;
+    const tick = setInterval(() => {
+      setRedirectSeconds((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    const to = setTimeout(() => {
+      if (finalRedirect) {
+        try {
+          const url = `https://api.whatsapp.com/send?phone=${supportWhatsTarget}&text=${encodeURIComponent("Cadastro finalizado")}`;
+          window.location.href = url;
+        } catch {}
+      }
+    }, 5000);
+    return () => { clearInterval(tick); clearTimeout(to); };
+  }, [step, router, finalRedirect]);
+
+  useEffect(() => {
+    if (step !== 6) return;
+    const onPop = () => { router.replace("/"); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [step, router]);
+
+  useEffect(() => {
+    if (!existingMode) return;
+    if (!(step >= 2 && step <= 5)) return;
+    if (updateSeconds <= 0) return;
+    const t = setInterval(() => {
+      setUpdateSeconds((s) => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [existingMode, step, updateSeconds]);
+
+  useEffect(() => {
+    if (!existingMode) return;
+    if (!(step >= 2 && step <= 5)) return;
+    if (updateSeconds > 0) return;
+    setAdvanceError("Acesso expirado. Valide seu número novamente.");
+    setExistingMode(false);
+    setExistingId(null);
+    setVerifyRequested(false);
+    setVerifyCode("");
+    setStep(1);
+  }, [updateSeconds, existingMode, step]);
 
   async function checkPhone(): Promise<{ found: boolean; id?: string; status?: string }> {
     const national = phoneIntl.replace(/\D/g, "");
@@ -373,6 +485,7 @@ function normalizeFone(raw: string) {
               if (found.id) await prefillExisting(found.id);
               setExistingMode(true);
               setStep(2);
+              setUpdateSeconds(300);
             }
           } else {
             setStep(2);
@@ -413,6 +526,12 @@ function normalizeFone(raw: string) {
         setStep(1);
         return;
       }
+      setFinalRedirect(false);
+      setExistingMode(false);
+      setExistingId(null);
+      setUpdateSeconds(0);
+      setStep(6);
+      try { localStorage.removeItem("cadastroDraft"); } catch {}
       return;
     }
     const col = collection(db, "registrations") as CollectionReference<Record<string, unknown>>;
@@ -425,21 +544,41 @@ function normalizeFone(raw: string) {
       });
     } catch {}
     setStep(6);
+    setRedirectSeconds(5);
+    setFinalRedirect(true);
+    try { localStorage.removeItem("cadastroDraft"); } catch {}
   }
 
   
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center px-3 py-6 overflow-hidden bg-[#0A0F1A]">
-      <div className="absolute inset-0 -z-10" style={{ backgroundImage: "radial-gradient(800px 400px at 15% 10%, #0b2b56 0%, transparent 70%), radial-gradient(700px 350px at 85% 90%, #0a3a2f 0%, transparent 70%)" }} />
-      <div className="absolute inset-0 -z-10 opacity-20" style={{ backgroundImage: "repeating-linear-gradient(0deg, transparent 0, transparent 23px, rgba(255,255,255,.06) 24px), repeating-linear-gradient(90deg, transparent 0, transparent 23px, rgba(255,255,255,.06) 24px)" }} />
-      <div className="absolute left-0 top-1/2 w-full h-px bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent opacity-40 animate-pulse" />
+      <div className="min-h-screen relative flex items-center justify-center px-3 py-6 overflow-hidden bg-transparent">
+        <div className="absolute inset-0 -z-10" style={{ backgroundImage: "linear-gradient(135deg, #0ea5e9 0%, #06b6d4 25%, #7c3aed 60%, #f97316 100%)" }} />
+        <div className="absolute inset-0 -z-10 opacity-30" style={{ backgroundImage: "conic-gradient(from 180deg at 70% 50%, rgba(255,255,255,.18) 0%, transparent 25%, rgba(255,255,255,.18) 50%, transparent 75%, rgba(255,255,255,.18) 100%)" }} />
+        <div className="absolute inset-0 -z-10 opacity-25" style={{ backgroundImage: "radial-gradient(600px 300px at 15% 20%, rgba(255,255,255,.35) 0%, transparent 70%), radial-gradient(700px 350px at 85% 80%, rgba(255,255,255,.25) 0%, transparent 70%)" }} />
       
       <div className="w-full max-w-lg sm:max-w-xl md:max-w-2xl bg-white border border-slate-200 rounded-lg p-4 sm:p-6 shadow-2xl">
         <div className="flex items-center justify-center">
-          <div className="text-2xl font-bold text-slate-900 text-center">{category === "Informatica" ? "Técnico de Informática" : category === "Rastreador" ? "Técnico de Rastreador Veicular" : "Cadastro de Técnico"}</div>
+          <div className="text-2xl font-bold text-slate-900 text-center">{step >= 2 ? (category === "Informatica" ? "Técnico de Informática" : category === "Rastreador" ? "Técnico de Rastreador Veicular" : "Cadastro de Técnico") : "Cadastro de Técnico"}</div>
         </div>
-        {!existingMode && step >= 1 && step <= 6 && !blocked && (
+
+        {showIntro && !existingMode && !blocked && step === 1 && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-center">
+              <Image src="https://files.catbox.moe/3ttomj.png" alt="Nordiun" width={320} height={128} className="h-16 sm:h-20 w-auto" />
+            </div>
+            <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+              <div className="text-2xl font-bold text-slate-900">Bem-vindo à Nordiun!</div>
+              <div className="text-slate-700">Junte-se à nossa equipe de técnicos de campo. Este formulário é o primeiro passo para integrar a rede Nordiun e prestar serviços com excelência em todo o país.</div>
+              <div className="text-xs text-slate-600">LGPD: seus dados são protegidos e usados somente para processamento do cadastro e acesso aos clientes. Não compartilhamos informações sem sua autorização.</div>
+            </section>
+            <div className="flex justify-center">
+              <button className="rounded-md px-4 py-2 bg-blue-600 text-white hover:bg-blue-700" onClick={() => setShowIntro(false)}>Começar</button>
+            </div>
+          </div>
+        )}
+
+        {!showIntro && !existingMode && step >= 1 && step <= 6 && !blocked && (
           <div className="mt-2">
             <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
               <div
@@ -455,8 +594,9 @@ function normalizeFone(raw: string) {
             <div className="space-y-3">
               <label className="text-sm font-medium text-slate-800">Seu número de WhatsApp</label>
               <div className="flex items-center gap-2">
-                <button type="button" className="border border-slate-300 rounded-md px-3 py-2 text-slate-900 w-28 text-left" onClick={() => setOpenDdi(true)} style={{ fontFamily: '"Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",system-ui,sans-serif' }}>
-                  <span className="inline-flex items-center gap-2"><span style={{ backgroundImage: `url(${flagUrl(country)})` }} className="inline-block w-5 h-4 bg-center bg-no-repeat bg-contain" aria-hidden="true" />+{getCountryCallingCode(country)}</span>
+                <button type="button" className="border border-slate-300 rounded-md px-2 py-2 w-20 inline-flex items-center justify-center gap-1 text-slate-900" onClick={() => setOpenDdi(true)} style={{ fontFamily: '"Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",system-ui,sans-serif' }}>
+                  <span style={{ backgroundImage: `url(${flagUrl(country)})` }} className="inline-block w-5 h-4 bg-center bg-no-repeat bg-contain" aria-hidden="true" />
+                  <span className="text-sm">+{getCountryCallingCode(country)}</span>
                 </button>
                 <input className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="DDD + número de WhatsApp" inputMode="numeric" value={phoneIntl} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ""); const limit = (ddi === "55" || country === "BR") ? 11 : Math.max(6, 15 - String(ddi).length); setPhoneIntl(raw.slice(0, limit)); }} />
               </div>
@@ -528,8 +668,7 @@ function normalizeFone(raw: string) {
               <div className="text-sm font-medium text-slate-800">Valores</div>
               {category === "Rastreador" && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Deslocamento</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.trackerMileage} onClick={() => flashInfo("trackerMileage")}>ℹ️</button></div>
-                  {info.trackerMileage && (<div className="text-xs text-slate-600">Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem.</div>)}
+                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Deslocamento</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "trackerMileage"} onClick={() => flashInfo("trackerMileage")}>ℹ️</button></div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="0,80" value={money.trackerMileage} onChange={handleCurrency("trackerMileage")} inputMode="numeric" /></div>
                   <div className="text-sm font-medium text-slate-800">Instalação por rastreador</div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="35,00" value={money.trackerInstallationRate} onChange={handleCurrency("trackerInstallationRate")} inputMode="numeric" /></div>
@@ -537,17 +676,13 @@ function normalizeFone(raw: string) {
               )}
               {category === "Informatica" && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Atendimento de 3h</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itRate3h} onClick={() => flashInfo("itRate3h")}>ℹ️</button></div>
-                  {info.itRate3h && (<div className="text-xs text-slate-600">Atendimento inicial de até 3 horas. Informe o valor que você cobra por até 3h.</div>)}
+                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Atendimento de 3h</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itRate3h"} onClick={() => flashInfo("itRate3h")}>ℹ️</button></div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="80,00" value={money.itRate3h} onChange={handleCurrency("itRate3h")} inputMode="numeric" /></div>
-                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Hora adicional</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itAdditionalHour} onClick={() => flashInfo("itAdditionalHour")}>ℹ️</button></div>
-                  {info.itAdditionalHour && (<div className="text-xs text-slate-600">Valor cobrado por hora após exceder 3 horas. Pode ser proporcional após 15 minutos.</div>)}
+                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Hora adicional</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itAdditionalHour"} onClick={() => flashInfo("itAdditionalHour")}>ℹ️</button></div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="15,00" value={money.itAdditionalHour} onChange={handleCurrency("itAdditionalHour")} inputMode="numeric" /></div>
-                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Diária</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itDaily} onClick={() => flashInfo("itDaily")}>ℹ️</button></div>
-                  {info.itDaily && (<div className="text-xs text-slate-600">Se atingir 9 horas no dia, cobra-se diária. Informe seu valor de diária.</div>)}
+                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Diária</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itDaily"} onClick={() => flashInfo("itDaily")}>ℹ️</button></div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="180,00" value={money.itDaily} onChange={handleCurrency("itDaily")} inputMode="numeric" /></div>
-                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Deslocamento</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itMileage} onClick={() => flashInfo("itMileage")}>ℹ️</button></div>
-                  {info.itMileage && (<div className="text-xs text-slate-600">Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem.</div>)}
+                  <div className="flex items-center justify-between"><div className="text-sm font-medium text-slate-800">Deslocamento</div><button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itMileage"} onClick={() => flashInfo("itMileage")}>ℹ️</button></div>
                   <div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="0,80" value={money.itMileage} onChange={handleCurrency("itMileage")} inputMode="numeric" /></div>
                 </div>
               )}
@@ -559,20 +694,18 @@ function normalizeFone(raw: string) {
           </form>
         )}
 
-        {step === 1 && (
+        {!showIntro && step === 1 && (
           <div className="mt-4 space-y-3">
             <label className="text-sm font-medium text-slate-800">Seu número de WhatsApp</label>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="border border-slate-300 rounded-md px-3 py-2 text-slate-900 w-28 text-left"
+                className="border border-slate-300 rounded-md px-2 py-2 w-20 inline-flex items-center justify-center gap-1 text-slate-900"
                 onClick={() => setOpenDdi(true)}
                 style={{ fontFamily: '"Segoe UI Emoji","Noto Color Emoji","Apple Color Emoji",system-ui,sans-serif' }}
               >
-                <span className="inline-flex items-center gap-2">
-                  <span style={{ backgroundImage: `url(${flagUrl(country)})` }} className="inline-block w-5 h-4 bg-center bg-no-repeat bg-contain" aria-hidden="true" />
-                  +{getCountryCallingCode(country)}
-                </span>
+                <span style={{ backgroundImage: `url(${flagUrl(country)})` }} className="inline-block w-5 h-4 bg-center bg-no-repeat bg-contain" aria-hidden="true" />
+                <span className="text-sm">+{getCountryCallingCode(country)}</span>
               </button>
               <input
                 className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500"
@@ -677,6 +810,7 @@ function normalizeFone(raw: string) {
                 onClick={() => setOpenDate(true)}
                 readOnly
               />
+              {ageFromIso(watch("birthDate")) < 18 && (<div className="text-xs text-red-600">Necessário ter 18 anos ou mais.</div>)}
               {errors.birthDate && (<div className="text-xs text-red-600">{errors.birthDate.message as string}</div>)}
             </div>
             <div className="space-y-1">
@@ -704,9 +838,9 @@ function normalizeFone(raw: string) {
               placeholder="CEP"
               {...register("cep")}
               onChange={(e) => {
-                const v = e.target.value;
-                setCep(v);
-                setValue("cep", v);
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+                setCep(digits);
+                setValue("cep", digits);
               }}
             />
             {errors.cep && (<div className="text-xs text-red-600">{errors.cep.message as string}</div>)}
@@ -728,12 +862,12 @@ function normalizeFone(raw: string) {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-800">Número <span className="text-red-600">*</span></label>
-              <input className={`w-full border ${errors.numero ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500 disabled:bg-slate-100`} placeholder="Número" {...register("numero")} disabled={!cepReady} />
+              <input className={`w-full border ${errors.numero ? "border-red-600" : "border-slate-300"} rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500`} placeholder="Número" {...register("numero")} />
               {errors.numero && (<div className="text-xs text-red-600">{errors.numero.message as string}</div>)}
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-slate-800">Complemento (opcional)</label>
-              <input className="w-full border border-slate-300 rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500 disabled:bg-slate-100" placeholder="Complemento (opcional)" {...register("complemento")} disabled={!cepReady} />
+              <input className="w-full border border-slate-300 rounded-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="Complemento (opcional)" {...register("complemento")} />
             </div>
             <div className="text-xs text-slate-600">Digite o CEP para liberar os demais campos.</div>
             <div className="flex justify-between">
@@ -750,11 +884,9 @@ function normalizeFone(raw: string) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-slate-800">Deslocamento</div>
-                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.trackerMileage} onClick={() => flashInfo("trackerMileage")}>ℹ️</button>
+                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "trackerMileage"} onClick={() => flashInfo("trackerMileage")}>ℹ️</button>
                 </div>
-                {info.trackerMileage && (
-                  <div className="text-xs text-slate-600">Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem.</div>
-                )}
+                
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span>
                   <input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="0,80" value={money.trackerMileage} onChange={handleCurrency("trackerMileage")} inputMode="numeric" />
@@ -770,44 +902,36 @@ function normalizeFone(raw: string) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-slate-800">Atendimento de 3h</div>
-                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itRate3h} onClick={() => flashInfo("itRate3h")}>ℹ️</button>
+                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itRate3h"} onClick={() => flashInfo("itRate3h")}>ℹ️</button>
                 </div>
-                {info.itRate3h && (
-                  <div className="text-xs text-slate-600">Atendimento inicial de até 3 horas. Informe o valor que você cobra por até 3h.</div>
-                )}
+                
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span>
                   <input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="80,00" value={money.itRate3h} onChange={handleCurrency("itRate3h")} inputMode="numeric" />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-slate-800">Hora adicional</div>
-                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itAdditionalHour} onClick={() => flashInfo("itAdditionalHour")}>ℹ️</button>
+                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itAdditionalHour"} onClick={() => flashInfo("itAdditionalHour")}>ℹ️</button>
                 </div>
-                {info.itAdditionalHour && (
-                  <div className="text-xs text-slate-600">Valor cobrado por hora após exceder 3 horas. Pode ser proporcional após 15 minutos.</div>
-                )}
+                
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span>
                   <input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="15,00" value={money.itAdditionalHour} onChange={handleCurrency("itAdditionalHour")} inputMode="numeric" />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-slate-800">Diária</div>
-                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itDaily} onClick={() => flashInfo("itDaily")}>ℹ️</button>
+                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itDaily"} onClick={() => flashInfo("itDaily")}>ℹ️</button>
                 </div>
-                {info.itDaily && (
-                  <div className="text-xs text-slate-600">Se atingir 9 horas no dia, cobra-se diária. Informe seu valor de diária.</div>
-                )}
+                
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span>
                   <input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="180,00" value={money.itDaily} onChange={handleCurrency("itDaily")} inputMode="numeric" />
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-medium text-slate-800">Deslocamento</div>
-                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={info.itMileage} onClick={() => flashInfo("itMileage")}>ℹ️</button>
+                  <button type="button" className="text-xs text-slate-600 px-2 py-1 border border-slate-300 rounded hover:bg-slate-100" aria-expanded={openInfo === "itMileage"} onClick={() => flashInfo("itMileage")}>ℹ️</button>
                 </div>
-                {info.itMileage && (
-                  <div className="text-xs text-slate-600">Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem.</div>
-                )}
+                
                 <div className="flex items-center">
                   <span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span>
                   <input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2 text-slate-900 placeholder:text-slate-500" placeholder="0,80" value={money.itMileage} onChange={handleCurrency("itMileage")} inputMode="numeric" />
@@ -821,14 +945,23 @@ function normalizeFone(raw: string) {
           </form>
         )}
 
-        {!existingMode && step === 6 && (
+        {step === 6 && (
           <div className="mt-6 space-y-4 text-center">
-            <img src="https://files.catbox.moe/3ttomj.png" alt="Nordiun" className="mx-auto h-12 sm:h-16" />
-            <div className="text-2xl font-bold text-slate-900">Obrigado!</div>
-            <div className="text-slate-700">Seu cadastro foi recebido. Em breve entraremos em contato.</div>
-            <div className="flex justify-center">
-              <a href="/chamados" className="rounded-md px-4 py-2 bg-blue-600 text-white hover:bg-blue-700">Ir para Chamados</a>
-            </div>
+            <Image src="https://files.catbox.moe/3ttomj.png" alt="Nordiun" width={200} height={80} className="mx-auto h-12 sm:h-16 w-auto" />
+            <div className="text-2xl font-bold text-slate-900">{finalRedirect ? "Obrigado por se juntar à Nordiun!" : "Dados atualizados com sucesso!"}</div>
+            {finalRedirect ? (
+              <>
+                <div className="text-slate-700">Agradecemos por preencher o cadastro de técnico. Se precisar de mais informações, fale conosco a qualquer momento.</div>
+                <div className="text-sm text-slate-600">Você será redirecionado em {redirectSeconds}s.</div>
+                <div className="flex justify-center gap-2">
+                  <a href={`https://api.whatsapp.com/send?phone=${supportWhatsTarget}&text=${encodeURIComponent("Cadastro finalizado")}`} className="rounded-md px-4 py-2 bg-green-600 text-white hover:bg-green-700">Falar no WhatsApp</a>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-slate-700">Seus dados foram atualizados.</div>
+              </>
+            )}
           </div>
         )}
 
@@ -837,7 +970,7 @@ function normalizeFone(raw: string) {
             <div className="text-lg font-semibold text-slate-900">Não foi possível validar o seu cadastro.</div>
             <div className="text-slate-700">Fale com o suporte para continuar.</div>
             <div className="flex justify-center">
-              <a href={`https://wa.me/${supportWhats}`} className="rounded-md px-4 py-2 bg-green-600 text-white hover:bg-green-700">Falar com suporte</a>
+              <a href={`https://api.whatsapp.com/send?phone=55${supportWhats}&text=${encodeURIComponent("Olá! Preciso de suporte para o cadastro.")}`} className="rounded-md px-4 py-2 bg-green-600 text-white hover:bg-green-700">Falar com suporte</a>
             </div>
           </div>
         )}
@@ -847,6 +980,7 @@ function normalizeFone(raw: string) {
       {openDate && (
         <DateModal
           value={undefined}
+          maxDate={(() => { const now = new Date(); return new Date(now.getFullYear() - 18, now.getMonth(), now.getDate()); })()}
           onSave={(iso) => {
             setValue("birthDate", iso);
             setBirthDisplay(formatDateBr(iso));
@@ -888,6 +1022,24 @@ function normalizeFone(raw: string) {
             </div>
             <div className="flex justify-end gap-2 mt-3">
               <button className="px-3 py-2 rounded bg-slate-200 text-slate-900" onClick={() => setOpenDdi(false)}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!!openInfo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setOpenInfo(null)}>
+          <div className="bg-white w-full max-w-md rounded-xl shadow-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-semibold text-slate-900 mb-2">Informações</div>
+            <div className="text-sm text-slate-700">
+              {openInfo === "itRate3h" && "Atendimento inicial de até 3 horas. Informe o valor que você cobra por até 3h."}
+              {openInfo === "itAdditionalHour" && "Valor cobrado por hora após exceder 3 horas. Pode ser proporcional após 15 minutos."}
+              {openInfo === "itDaily" && "Se atingir 9 horas no dia, cobra-se diária. Informe seu valor de diária."}
+              {openInfo === "trackerMileage" && "Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem."}
+              {openInfo === "itMileage" && "Valor por km rodado (ida e volta). Acima de 40 km, cada parte arca sua quilometragem."}
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button className="px-3 py-2 rounded bg-slate-200 text-slate-900" onClick={() => setOpenInfo(null)}>Fechar</button>
             </div>
           </div>
         </div>
