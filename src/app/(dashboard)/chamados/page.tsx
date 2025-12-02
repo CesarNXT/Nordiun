@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Image from "next/image";
 import { DateModal } from "@/components/date-modal";
+import { useAppData } from "@/context/app-data";
 import { db, storage } from "@/lib/firebase";
 import { collection, addDoc, onSnapshot, query, orderBy, type CollectionReference, doc, updateDoc, deleteDoc, serverTimestamp, Timestamp, FieldValue, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
@@ -9,7 +10,7 @@ import { Play } from "lucide-react";
 
 type EmpresaLite = { id: string; name: string; trackerEnabled?: boolean; valores?: { itRate3h?: number; itHalfDaily?: number; itDaily?: number; itAdditionalHour?: number; itMileage?: number; trackerInstallationRate?: number; itToleranceMinutes?: number }; responsaveis?: { nome: string; numero: string }[] };
 type TecnicoLite = { id: string; name: string; cidade?: string; estado?: string; status?: "Novo" | "Ativo" | "Cancelado" | "Ajudante"; supervisorId?: string; category?: "Rastreador" | "Informatica"; categories?: ("Rastreador" | "Informatica")[]; itRate3h?: number; itAdditionalHour?: number; itDaily?: number; itMileage?: number; trackerMileage?: number; trackerInstallationRate?: number };
-type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; workSessions?: { startIso: string; endIso: string }[]; paymentReceiptsTechnician?: { url: string; path: string }[]; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string; ratDocName?: string; ratDocUrl?: string; ratDocPath?: string };
+type Chamado = { empresaId: string; tecnicoId: string; status: "Agendado" | "Em andamento" | "Concluído" | "Cancelado" | "Reagendado" | "Invalido"; createdAt: number | Timestamp | FieldValue; name: string; callNumber?: string; endereco?: string; cep?: string; rua?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; estado?: string; contact?: string; contactNumber?: string; category?: "Informatica" | "Rastreador"; serviceType?: string; units?: number; appointmentDate?: string; appointmentTime?: string; arrivalAt?: string; paymentDateCompany?: string; paymentDateTechnician?: string; paymentStatusCompany?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; paymentStatusTechnician?: "A pagar" | "Pago" | "Pendente" | "Cancelado"; hasKm?: boolean; valorEmpresa?: number; valorTecnico?: number; kmEmpresa?: number; kmTecnico?: number; kmValorEmpresa?: number; kmValorTecnico?: number; workStart?: string; workEnd?: string; workSessions?: { startIso: string; endIso: string }[]; paymentReceiptsTechnician?: { url: string; path: string }[]; paymentReceiptTechnicianUrl?: string; paymentReceiptTechnicianPath?: string; ratDocName?: string; ratDocUrl?: string; ratDocPath?: string };
 
 function toDateVal(x: number | string | Timestamp | FieldValue | undefined | null): Date {
   if (!x) return new Date(0);
@@ -20,6 +21,7 @@ function toDateVal(x: number | string | Timestamp | FieldValue | undefined | nul
 }
 
 export default function ChamadosPage() {
+  const { tecnicos: ctxT, empresas: ctxE, chamados: ctxC } = useAppData();
   const [empresas, setEmpresas] = useState<EmpresaLite[]>([]);
   const [tecnicos, setTecnicos] = useState<TecnicoLite[]>([]);
   const [calls, setCalls] = useState<(Chamado & { id: string })[]>([]);
@@ -58,8 +60,7 @@ export default function ChamadosPage() {
   const [openTecnico, setOpenTecnico] = useState(false);
   const [openContact, setOpenContact] = useState(false);
   const [openStatus, setOpenStatus] = useState(false);
-  const [openDate, setOpenDate] = useState(false);
-  const [openTime, setOpenTime] = useState(false);
+  const [openDateTime, setOpenDateTime] = useState(false);
   const times = useMemo(() => {
     const arr: string[] = [];
     for (let h = 0; h < 24; h++) {
@@ -103,6 +104,9 @@ export default function ChamadosPage() {
   const [paymentStatusTechnician, setPaymentStatusTechnician] = useState<Chamado["paymentStatusTechnician"]>("A pagar");
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewFilter, setViewFilter] = useState<"todos" | "avisos" | "andamento" | "ontem" | "hoje" | "amanha" | "data">("todos");
+  const [viewDate, setViewDate] = useState<string>("");
+  const [viewTime, setViewTime] = useState<string>("");
 
   const tecnicoSel = useMemo(() => tecnicos.find((t) => t.id === tecnicoId), [tecnicoId, tecnicos]);
 
@@ -124,58 +128,9 @@ export default function ChamadosPage() {
     loadDocs();
   }, [db, empresaId]);
 
-  useEffect(() => {
-    if (!db) return;
-    const colE = collection(db, "empresas") as CollectionReference<Record<string, unknown>>;
-    const stopE = onSnapshot(query(colE, orderBy("name")), (snap) => {
-      setEmpresas(snap.docs.map((d) => {
-        const data = d.data() as { name?: string; trackerEnabled?: boolean; valores?: EmpresaLite["valores"]; responsaveis?: { nome?: string; numero?: string }[] } & Partial<EmpresaLite["valores"]>;
-        const v = data.valores || {};
-        return {
-          id: d.id,
-          name: (data.name || "").toUpperCase(),
-          trackerEnabled: !!data.trackerEnabled,
-          valores: {
-            itRate3h: v.itRate3h ?? data.itRate3h,
-            itHalfDaily: v.itHalfDaily ?? data.itHalfDaily,
-            itDaily: v.itDaily ?? data.itDaily,
-            itAdditionalHour: v.itAdditionalHour ?? data.itAdditionalHour,
-            itMileage: v.itMileage ?? data.itMileage,
-            trackerInstallationRate: v.trackerInstallationRate ?? data.trackerInstallationRate,
-            itToleranceMinutes: v.itToleranceMinutes ?? data.itToleranceMinutes,
-          },
-          responsaveis: (data.responsaveis || []).map((r) => ({ nome: String(r?.nome || ""), numero: String(r?.numero || "") })),
-        } as EmpresaLite;
-      }));
-    });
-    const colT = collection(db, "registrations") as CollectionReference<Record<string, unknown>>;
-    const stopT = onSnapshot(query(colT, orderBy("name")), (snap) => {
-      setTecnicos(snap.docs.map((d) => {
-        const data = d.data() as TecnicoLite;
-        return {
-          id: d.id,
-          name: (data.name || "").toUpperCase(),
-          cidade: data.cidade,
-          estado: data.estado,
-          status: data.status,
-          supervisorId: data.supervisorId,
-          category: data.category,
-          categories: data.categories,
-          itRate3h: data.itRate3h,
-          itAdditionalHour: data.itAdditionalHour,
-          itDaily: data.itDaily,
-          itMileage: data.itMileage,
-          trackerMileage: data.trackerMileage,
-          trackerInstallationRate: data.trackerInstallationRate,
-        } as TecnicoLite;
-      }));
-    });
-    const colC = collection(db, "chamados") as CollectionReference<Chamado>;
-    const stopC = onSnapshot(query(colC, orderBy("createdAt", "desc")), (snap) => {
-      setCalls(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Chamado) })));
-    }, () => {});
-    return () => { stopE(); stopT(); stopC(); };
-  }, []);
+  useEffect(() => { if (Array.isArray(ctxE) && ctxE.length) setEmpresas(ctxE as unknown as EmpresaLite[]); }, [ctxE]);
+  useEffect(() => { if (Array.isArray(ctxT) && ctxT.length) setTecnicos((ctxT as unknown as TecnicoLite[]).map((t) => ({ ...t, name: (t.name || "").toUpperCase() }))); }, [ctxT]);
+  useEffect(() => { if (Array.isArray(ctxC) && ctxC.length) setCalls(ctxC as unknown as (Chamado & { id: string })[]); }, [ctxC]);
 
   // Prefill handled when opening modal
 
@@ -521,6 +476,92 @@ export default function ChamadosPage() {
     return "";
   }
 
+  function apptDate(c: Chamado): Date | null {
+    const d = c.appointmentDate ? new Date(c.appointmentDate) : null;
+    const t = (c.appointmentTime || "").match(/^(\d{2}):(\d{2})$/);
+    if (!d || !t) return null;
+    const hh = Number(t[1]); const mm = Number(t[2]);
+    const dt = new Date(d.getTime()); dt.setHours(hh, mm, 0, 0);
+    return dt;
+  }
+  const isLate = useCallback((c: Chamado): boolean => {
+    const dt = apptDate(c);
+    if (!dt) return false;
+    const now = new Date();
+    const done = c.status === "Em andamento" || c.status === "Concluído" || c.status === "Cancelado";
+    return !done && now.getTime() >= dt.getTime();
+  }, []);
+  const sortedCalls = useMemo(() => {
+    const arr = [...calls];
+    const weight = (c: Chamado & { id: string }) => {
+      if (isLate(c)) return -3;
+      if (c.status === "Em andamento") return -2;
+      if (c.status === "Agendado") return -1;
+      return 0;
+    };
+    arr.sort((a, b) => {
+      const wa = weight(a); const wb = weight(b);
+      if (wa !== wb) return wb - wa; // maiores primeiro
+      const da = apptDate(a)?.getTime() || 0;
+      const db = apptDate(b)?.getTime() || 0;
+      return da - db;
+    });
+    if (viewFilter === "avisos") return arr.filter(isLate);
+    if (viewFilter === "andamento") return arr.filter((c) => c.status === "Em andamento");
+    if (viewFilter === "hoje" || viewFilter === "ontem" || viewFilter === "amanha") {
+      const base = new Date();
+      const day = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+      const delta = viewFilter === "ontem" ? -1 : (viewFilter === "amanha" ? 1 : 0);
+      const targetStart = new Date(day.getFullYear(), day.getMonth(), day.getDate() + delta);
+      const targetEnd = new Date(targetStart.getFullYear(), targetStart.getMonth(), targetStart.getDate() + 1);
+      return arr.filter((c) => { const d = apptDate(c); return d && d.getTime() >= targetStart.getTime() && d.getTime() < targetEnd.getTime(); });
+    }
+    if (viewFilter === "data" && viewDate) {
+      return arr.filter((c) => {
+        const dOk = typeof c.appointmentDate === "string" && (c.appointmentDate || "").startsWith(viewDate);
+        const tOk = viewTime ? (c.appointmentTime === viewTime) : true;
+        return dOk && tOk;
+      });
+    }
+    return arr;
+  }, [calls, viewFilter, isLate, viewDate, viewTime]);
+
+  const groupedByMonth = useMemo(() => {
+    const m = new Map<string, (Chamado & { id: string })[]>();
+    const label = (c: Chamado) => {
+      const d = apptDate(c) || toDateVal(c.createdAt);
+      const month = d.toLocaleString("pt-BR", { month: "long" });
+      const cap = month.charAt(0).toUpperCase() + month.slice(1);
+      return `${cap} ${d.getFullYear()}`;
+    };
+    for (const c of sortedCalls) {
+      const k = label(c);
+      const list = m.get(k) || [];
+      list.push(c);
+      m.set(k, list);
+    }
+    const entries = Array.from(m.entries());
+    entries.sort((a, b) => {
+      const pa = a[1][0]; const pb = b[1][0];
+      const da = apptDate(pa)?.getTime() || toDateVal(pa.createdAt).getTime();
+      const db = apptDate(pb)?.getTime() || toDateVal(pb.createdAt).getTime();
+      return db - da;
+    });
+    return entries;
+  }, [sortedCalls]);
+
+  async function registerArrival() {
+    if (!db || !editingId) return;
+    try {
+      await updateDoc(doc(db, "chamados", editingId), { arrivalAt: new Date().toISOString(), status: "Em andamento" });
+      setStatus("Em andamento");
+    } catch {}
+  }
+  async function markInProgress() {
+    if (!db || !editingId) return;
+    try { await updateDoc(doc(db, "chamados", editingId), { status: "Em andamento" }); setStatus("Em andamento"); } catch {}
+  }
+
   function resetForm() {
     setEditingId(null);
     setEmpresaId("");
@@ -640,9 +681,9 @@ export default function ChamadosPage() {
 
       {open && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setOpen(false)}>
-          <div className="bg-surface w-full max-w-2xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-foreground">{editingId ? "Editar chamado" : "Novo chamado"}</div>
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="bg-surface w-full max-w-2xl max-h-[85vh] rounded-lg shadow-xl overflow-auto" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="sticky top-0 z-10 bg-surface p-4 border-b border-border"><div className="text-lg font-bold text-foreground">{editingId ? "Editar chamado" : "Novo chamado"}</div></div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="space-y-1">
                 <div className="text-xs text-foreground">Nome</div>
                 <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={name} onChange={(e) => setName(e.target.value.toUpperCase())} />
@@ -736,15 +777,12 @@ export default function ChamadosPage() {
               <div className="space-y-1">
                 <div className="text-xs text-foreground">Status</div>
                   <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={status} readOnly onClick={() => setOpenStatus(true)} />
+                  
               </div>
-              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="sm:col-span-2">
                 <div className="space-y-1">
-                  <div className="text-xs text-foreground">Data do atendimento</div>
-                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={formatDateBr(appointmentDate) || "Selecione"} readOnly onClick={() => setOpenDate(true)} />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs text-foreground">Hora do atendimento</div>
-                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={formatTimeBr(appointmentTime) || "Selecione"} readOnly onClick={() => setOpenTime(true)} />
+                  <div className="text-xs text-foreground">Data e hora do atendimento</div>
+                  <input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={[formatDateBr(appointmentDate), formatTimeBr(appointmentTime)].filter(Boolean).join(" ") || "Selecione"} readOnly onClick={() => setOpenDateTime(true)} />
                 </div>
               </div>
             <div className="space-y-1">
@@ -780,14 +818,14 @@ export default function ChamadosPage() {
             {!!error && (
               <div className="text-sm text-red-700 mt-2">{error}</div>
             )}
-            <div className="flex justify-center gap-2 mt-3">
+            <div className="flex justify-center gap-2 p-4 pt-0">
               {editingId && (
                 <button className="px-3 py-2 rounded-md bg-red-600 text-white hover:bg-red-700" onClick={async () => { if (db && editingId) { await deleteDoc(doc(db, "chamados", editingId)); resetForm(); setOpen(false); } }}>Excluir</button>
               )}
               {!editingId && (
                 <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => { setOpen(false); setOpenCategory(true); }}>Voltar</button>
               )}
-              <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" onClick={createCall} disabled={!name.trim() || !empresaId || !tecnicoId || (tecnicoSel?.status === "Ajudante")}>Salvar</button>
+              <button className="px-3 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" onClick={createCall} disabled={!name.trim() || !empresaId || !tecnicoId}>Salvar</button>
             </div>
           </div>
         </div>
@@ -966,17 +1004,17 @@ export default function ChamadosPage() {
       )}
       {openEmpresa && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenEmpresa(false)}>
-          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface text-foreground w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-foreground">Selecionar empresa</div>
             <div className="mt-2 max-h-64 overflow-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
               {empresas.slice(0, 20).map((e) => (
-                <button key={e.id} className="text-left border border-slate-200 rounded-md p-3 hover:bg-slate-50" onClick={() => {
+                <button key={e.id} className="text-left border border-border rounded-md p-3 bg-background text-foreground hover:bg-muted" onClick={() => {
                   setEmpresaId(e.id);
                   setOpenEmpresa(false);
                   if (e.trackerEnabled) { setCategoryChoice("Informatica"); setOpenCategory(true); }
                   else { setCallCategory("Informatica"); setServiceType("3h"); setOpen(true); }
                 }}>
-                  <div className="font-semibold text-slate-900">{e.name}</div>
+                  <div className="font-semibold text-foreground">{e.name}</div>
                 </button>
               ))}
             </div>
@@ -986,12 +1024,12 @@ export default function ChamadosPage() {
 
       {openTecnico && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTecnico(false)}>
-          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface text-foreground w-full max-w-md rounded-lg shadow-xl p-4 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-foreground">Selecionar técnico</div>
-            <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qTecnico} onChange={(e) => setQTecnico(e.target.value)} />
+            <input className="border border-border rounded-md px-3 py-2 w-full mt-2 bg-background text-foreground" placeholder="Buscar por nome" value={qTecnico} onChange={(e) => setQTecnico(e.target.value)} />
             <div className="mt-2 max-h-64 overflow-auto space-y-1">
               {tecnicos.filter((t) => String(t.name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(String(qTecnico).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))).map((t) => (
-                <button key={t.id} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setTecnicoId(t.id); setOpenTecnico(false); }}>{displayTecnico(t)}{t.status ? ` ${statusEmoji(t.status)}` : ""}</button>
+                <button key={t.id} className="w-full text-left px-3 py-2 border border-border rounded bg-background text-foreground hover:bg-muted" onClick={() => { setTecnicoId(t.id); setOpenTecnico(false); }}>{displayTecnico(t)}{t.status ? ` ${statusEmoji(t.status)}` : ""}</button>
               ))}
             </div>
           </div>
@@ -1000,15 +1038,15 @@ export default function ChamadosPage() {
 
       {openContact && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenContact(false)}>
-          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface text-foreground w-full max-w-xl rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-bold text-foreground">Selecionar responsável</div>
-            <input className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" placeholder="Buscar por nome" value={qContact} onChange={(e) => setQContact(e.target.value)} />
+            <input className="border border-border rounded-md px-3 py-2 w-full mt-2 bg-background text-foreground" placeholder="Buscar por nome" value={qContact} onChange={(e) => setQContact(e.target.value)} />
             <div className="mt-2 max-h-64 overflow-auto space-y-1">
               {(empresas.find((e) => e.id === empresaId)?.responsaveis || []).filter((r) => String(r.nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(String(qContact).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))).map((r, idx) => (
-                <button key={`${r.nome}-${idx}`} className="w-full text-left px-3 py-2 border border-slate-200 rounded hover:bg-slate-50" onClick={() => { setContact(r.nome); setContactNumber(r.numero); setOpenContact(false); }}>{r.nome}{r.numero ? ` • ${r.numero}` : ""}</button>
+                <button key={`${r.nome}-${idx}`} className="w-full text-left px-3 py-2 border border-border rounded bg-background text-foreground hover:bg-muted" onClick={() => { setContact(r.nome); setContactNumber(r.numero); setOpenContact(false); }}>{r.nome}{r.numero ? ` • ${r.numero}` : ""}</button>
               ))}
               {!(empresas.find((e) => e.id === empresaId)?.responsaveis || []).length && (
-                <div className="text-sm text-slate-700">Selecione uma empresa com responsáveis cadastrados.</div>
+                <div className="text-sm text-foreground">Selecione uma empresa com responsáveis cadastrados.</div>
               )}
             </div>
           </div>
@@ -1017,30 +1055,38 @@ export default function ChamadosPage() {
 
       {openStatus && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenStatus(false)}>
-          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface text-foreground w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className="text-lg font-bold text-foreground">Selecionar status</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {["Agendado","Em andamento","Concluído","Cancelado","Reagendado","Invalido"].map((s) => (
-                <button key={s} className={`px-3 py-2 border rounded hover:bg-slate-100 ${statusButtonClasses(s as Chamado["status"])}`} onClick={() => { setStatus(s as Chamado["status"]); setOpenStatus(false); }}>{s}</button>
+                <button key={s} className={`px-3 py-2 border border-border rounded hover:bg-muted ${statusButtonClasses(s as Chamado["status"])}`} onClick={async () => { 
+                  setStatus(s as Chamado["status"]);
+                  if (db && editingId) {
+                    try {
+                      if (s === "Em andamento") await updateDoc(doc(db, "chamados", editingId), { status: s, arrivalAt: new Date().toISOString() });
+                      else await updateDoc(doc(db, "chamados", editingId), { status: s });
+                    } catch {}
+                  }
+                  setOpenStatus(false);
+                }}>{s}</button>
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {openDate && (
-        <DateModal value={appointmentDate} onSave={(iso) => setAppointmentDate(iso)} onClose={() => setOpenDate(false)} />
-      )}
-
-      {openTime && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenTime(false)}>
-          <div className="bg-white dark:bg-slate-800 dark:text-slate-100 w-full max-w-md rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-foreground">Selecionar hora</div>
-            <select className="border border-slate-300 rounded-md px-3 py-2 w-full mt-2" value={appointmentTime || ""} onChange={(e) => { setAppointmentTime(e.target.value); setOpenTime(false); }}>
-              <option value="">Selecione</option>
-              {times.map((t: string) => (<option key={t} value={t}>{t}</option>))}
-            </select>
-            <div className="flex justify-end gap-2 mt-3"><button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900" onClick={() => setOpenTime(false)}>Fechar</button></div>
+      {openDateTime && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={() => setOpenDateTime(false)}>
+          <div className="bg-surface text-foreground w-full max-w-sm rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+            <div className="text-lg font-bold text-foreground">Selecionar data e hora</div>
+            <div className="mt-2 grid grid-cols-1 gap-2">
+              <input type="date" className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={appointmentDate || ""} onChange={(e) => setAppointmentDate(e.target.value)} />
+              <input type="time" className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" value={appointmentTime || ""} onChange={(e) => setAppointmentTime(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => setOpenDateTime(false)}>Fechar</button>
+              <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={() => setOpenDateTime(false)}>Salvar</button>
+            </div>
           </div>
         </div>
       )}
@@ -1076,7 +1122,7 @@ export default function ChamadosPage() {
                   const ms = Math.max(0, e.getTime() - d.getTime());
                   return (
                     <div key={`${s.startIso}-${idx}`} className="flex items-center justify-between border border-border rounded-md px-3 py-2">
-                      <div className="text-sm text-foreground">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      <div className="text-sm text-foreground">{d.toLocaleDateString("pt-BR")} {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} – {e.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</div>
                       <div className="flex items-center gap-3">
                         <div className="text-sm text-foreground">{formatDuration(ms)}</div>
                         <button className="text-xs text-blue-600 hover:underline" onClick={() => openEditSession(idx)}>Editar</button>
@@ -1140,57 +1186,52 @@ export default function ChamadosPage() {
       )}
       
 
-      <div className="mt-4 hidden sm:block overflow-x-auto">
-        <table className="min-w-full border border-border bg-surface rounded-md overflow-hidden">
-          <thead>
-            <tr className="bg-muted">
-              <th className="p-2 text-left">Nome</th>
-              <th className="p-2 text-left">Empresa</th>
-              <th className="p-2 text-left">Técnico</th>
-              <th className="p-2 text-left">Data e hora</th>
-              <th className="p-2 text-left">Local</th>
-              <th className="p-2 text-left">Tipo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {calls.map((c) => {
+      <div className="mt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "todos" ? "bg-muted" : ""}`} onClick={() => setViewFilter("todos")}>Todos</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "avisos" ? "bg-muted" : ""}`} onClick={() => setViewFilter("avisos")}>Avisos</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "andamento" ? "bg-muted" : ""}`} onClick={() => setViewFilter("andamento")}>Em andamento</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "ontem" ? "bg-muted" : ""}`} onClick={() => setViewFilter("ontem")}>Ontem</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "hoje" ? "bg-muted" : ""}`} onClick={() => setViewFilter("hoje")}>Hoje</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "amanha" ? "bg-muted" : ""}`} onClick={() => setViewFilter("amanha")}>Amanhã</button>
+          <button className={`px-2 py-1 rounded-md border border-border ${viewFilter === "data" ? "bg-muted" : ""}`} onClick={() => setViewFilter("data")}>Data específica</button>
+          {viewFilter === "data" && (
+            <div className="flex items-center gap-2 ml-2">
+              <input type="date" className="border border-border rounded-md px-2 py-1 bg-background text-foreground" value={viewDate} onChange={(e) => setViewDate(e.target.value)} />
+              <input type="text" placeholder="HH:MM" className="border border-border rounded-md px-2 py-1 bg-background text-foreground w-24" value={viewTime} onChange={(e) => setViewTime(e.target.value)} />
+              <select className="border border-border rounded-md px-2 py-1 bg-background text-foreground w-28" value={viewTime} onChange={(e) => setViewTime(e.target.value)}>
+                <option value="">Hora</option>
+                {times.map((t: string) => (<option key={t} value={t}>{t}</option>))}
+              </select>
+            </div>
+          )}
+        </div>
+        {groupedByMonth.map(([label, list]) => (
+          <div key={label} className="mb-4">
+            <div className="text-sm font-semibold text-foreground mb-2">{label}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {list.map((c) => {
               const empresaNome = mapEmpresa[c.empresaId] || c.empresaId;
               const empresaPrimeira = (empresaNome || "").split(/\s+/)[0] || empresaNome;
               const dataHora = [formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—";
-              const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
-              const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
+              const tecnicoNome = displayTecnico({ id: c.tecnicoId, name: mapTecnico[c.tecnicoId] || c.tecnicoId, cidade: c.cidade, estado: c.estado, status: undefined } as unknown as TecnicoLite).split(" - ")[0];
               return (
-                <tr key={c.id} className={`border-t border-border ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-                  <td className="p-2 text-foreground">{c.name}</td>
-                  <td className="p-2 text-foreground">{empresaPrimeira}</td>
-                  <td className="p-2 text-foreground">{mapTecnico[c.tecnicoId] || c.tecnicoId}</td>
-                  <td className="p-2 text-foreground">{dataHora}</td>
-                  <td className="p-2 text-foreground">{local || "—"}</td>
-                  <td className="p-2 text-foreground">{tipo}</td>
-                </tr>
+                <div key={c.id} className={`border border-border rounded-md bg-surface p-3 cursor-pointer ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold text-foreground">{c.name}</div>
+                    {c.status === "Em andamento" ? <span className="ml-2 inline-flex items-center rounded px-2 py-0.5 text-xs bg-green-600 text-white">Em andamento</span> : null}
+                  </div>
+                  <div className="text-sm text-foreground mt-1">Data Hora: {dataHora}</div>
+                  <div className="text-sm text-foreground">Técnico: {tecnicoNome}</div>
+                  <div className="text-sm text-foreground">Cidade: {c.cidade || "—"}</div>
+                  <div className="text-sm text-foreground">Estado: {c.estado || "—"}</div>
+                  <div className="text-sm text-foreground">Status: {c.status}</div>
+                </div>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-      <div className="sm:hidden space-y-2">
-        {calls.map((c) => {
-          const empresaNome = mapEmpresa[c.empresaId] || c.empresaId;
-          const empresaPrimeira = (empresaNome || "").split(/\s+/)[0] || empresaNome;
-          const dataHora = [formatDateBr(c.appointmentDate), formatTimeBr(c.appointmentTime)].filter(Boolean).join(" ") || "—";
-          const local = [c.cidade, c.estado].filter(Boolean).join(" - ") || "";
-          const tipo = (c.serviceType || "").includes("Diária") ? "Diária" : "3h";
-          return (
-            <div key={c.id} className={`border border-border rounded-md p-3 ${statusClasses(c.status)}`} onClick={() => openEdit(c)}>
-              <div className="font-semibold text-foreground">{c.name}</div>
-              <div className="text-sm text-foreground">Empresa: {empresaPrimeira}</div>
-              <div className="text-sm text-foreground">Técnico: {mapTecnico[c.tecnicoId] || c.tecnicoId}</div>
-              <div className="text-sm text-foreground">Data e hora: {dataHora}</div>
-              <div className="text-sm text-foreground">Local: {local || "—"}</div>
-              <div className="text-sm text-foreground">Tipo: {tipo}</div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
       
     </div>

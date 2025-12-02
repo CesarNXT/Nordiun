@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/toast";
 import { AuthGuard } from "@/components/auth-guard";
+import { AppDataProvider } from "@/context/app-data";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -21,16 +23,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`}>
-        <script dangerouslySetInnerHTML={{ __html: `
-          (function(){
-            try {
-              var pref = localStorage.getItem('theme');
-              var isDark = pref ? pref === 'dark' : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-              document.documentElement.classList.toggle('dark', !!isDark);
-            } catch {}
-          })();
-        ` }} />
-        <AuthGuard>{children}</AuthGuard>
+        <ToastProvider>
+          <AppDataProvider>
+            <AuthGuard>{children}</AuthGuard>
+          </AppDataProvider>
+        </ToastProvider>
       </body>
     </html>
   );

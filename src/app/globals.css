@@ -6,6 +6,10 @@
   --surface: #ffffff;
   --muted: #f1f5f9;
   --border: #cbd5e1;
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --muted-foreground: #64748b;
+  --surface-variant: #f8fafc;
 }
 
 @theme inline {
@@ -14,6 +18,10 @@
   --color-surface: var(--surface);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-surface-variant: var(--surface-variant);
   --font-sans: var(--font-inter);
 }
 
@@ -25,6 +33,10 @@
   --surface: #101826;
   --muted: #182235;
   --border: #334155;
+  --primary: #3b82f6;
+  --primary-foreground: #0b1220;
+  --muted-foreground: #94a3b8;
+  --surface-variant: #0f172a;
 }
 
 body {

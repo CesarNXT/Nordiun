@@ -376,19 +376,19 @@ export default function EmpresasPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-2xl font-bold text-slate-900">Empresas</div>
-        <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={() => setOpen(true)}>Nova empresa</button>
+        <div className="text-2xl font-bold text-foreground">Empresas</div>
+        <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={() => setOpen(true)}>Nova empresa</button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por nome" value={qName} onChange={(e) => setQName(e.target.value)} />
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por CNPJ" value={qCnpj} onChange={(e) => setQCnpj(e.target.value)} />
-        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Filtrar por responsável" value={qResp} onChange={(e) => setQResp(e.target.value)} />
+        <input className="border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Filtrar por nome" value={qName} onChange={(e) => setQName(e.target.value)} />
+        <input className="border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Filtrar por CNPJ" value={qCnpj} onChange={(e) => setQCnpj(e.target.value)} />
+        <input className="border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Filtrar por responsável" value={qResp} onChange={(e) => setQResp(e.target.value)} />
       </div>
 
       <div className="hidden sm:block overflow-x-auto">
-        <table className="min-w-full border border-slate-200 bg-white">
+        <table className="min-w-full border border-border bg-surface">
           <thead>
-            <tr className="bg-slate-100">
+            <tr className="bg-muted">
               <th className="p-2 text-left">Nome</th>
               <th className="p-2 text-left">CNPJ</th>
               <th className="p-2 text-left">Responsáveis</th>
@@ -396,10 +396,10 @@ export default function EmpresasPage() {
           </thead>
           <tbody>
             {filtered.map((e) => (
-              <tr key={e.id} className="border-t border-slate-200 hover:bg-slate-50 cursor-pointer" onClick={async () => { setDetail(e); setDetailForm({ ...e }); await loadDetailDocs(e.id); }}>
-                <td className="p-2 text-slate-800">{e.name}</td>
-                <td className="p-2 text-slate-800">{e.cnpj}</td>
-                <td className="p-2 text-slate-800">
+              <tr key={e.id} className="border-t border-border hover:bg-muted cursor-pointer" onClick={async () => { setDetail(e); setDetailForm({ ...e }); await loadDetailDocs(e.id); }}>
+                <td className="p-2 text-foreground">{e.name}</td>
+                <td className="p-2 text-foreground">{e.cnpj}</td>
+                <td className="p-2 text-foreground">
                   {(() => {
                     const list = (e.responsaveis || []).map((r) => r.nome).filter(Boolean);
                     const count = list.length;
@@ -416,23 +416,23 @@ export default function EmpresasPage() {
       {/* Mobile cards */}
       <div className="sm:hidden space-y-2">
         {filtered.map((e) => (
-          <div key={e.id} className="border border-slate-200 rounded-md bg-white p-3" onClick={async () => { setDetail(e); setDetailForm({ ...e }); await loadDetailDocs(e.id); }}>
-            <div className="font-semibold text-slate-900">{e.name}</div>
-            <div className="text-sm text-slate-700">CNPJ: {e.cnpj}</div>
-            <div className="text-sm text-slate-700">Responsáveis: 👥 {(e.responsaveis || []).length}</div>
+          <div key={e.id} className="border border-border rounded-md bg-surface p-3" onClick={async () => { setDetail(e); setDetailForm({ ...e }); await loadDetailDocs(e.id); }}>
+            <div className="font-semibold text-foreground">{e.name}</div>
+            <div className="text-sm text-foreground">CNPJ: {e.cnpj}</div>
+            <div className="text-sm text-foreground">Responsáveis: 👥 {(e.responsaveis || []).length}</div>
           </div>
         ))}
       </div>
 
       {open && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-3xl bg-white rounded-lg p-4 sm:p-6 space-y-3 shadow-xl max-h-[85vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Nova empresa</div>
+          <div className="w-full max-w-3xl bg-surface text-foreground rounded-lg p-4 sm:p-6 space-y-3 shadow-xl max-h-[85vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Nova empresa</div>
       <div className="space-y-2">
-        <div className="text-sm font-semibold text-slate-900">Dados da empresa</div>
-        <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} />
-        <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+        <div className="text-sm font-semibold text-foreground">Dados da empresa</div>
+        <input className="w-full border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <input className="w-full border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} />
+        <label className="inline-flex items-center gap-2 text-sm text-foreground">
           <input type="checkbox" checked={!!form.trackerEnabled} onChange={(e) => setForm({ ...form, trackerEnabled: e.target.checked })} />
           <span>Empresa realiza instalação de rastreador veicular</span>
         </label>
@@ -440,11 +440,11 @@ export default function EmpresasPage() {
       </div>
 
             <div className="pt-2 space-y-2">
-              <div className="text-sm font-semibold text-slate-900">Gerenciamento</div>
+              <div className="text-sm font-semibold text-foreground">Gerenciamento</div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setOpenDocs(true); }}>Documentos</button>
-                <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setOpenResp(true); }}>Responsáveis</button>
-                <button type="button" className="px-3 py-2 rounded-md border border-slate-300 text-slate-900 hover:bg-slate-100" onClick={() => { setModalTarget("new"); setVisibleHours([1,2,3,4,5,6,7,8,9]); setOpenVals(true); }}>Valores</button>
+                <button type="button" className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => { setModalTarget("new"); setOpenDocs(true); }}>Documentos</button>
+                <button type="button" className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => { setModalTarget("new"); setOpenResp(true); }}>Responsáveis</button>
+                <button type="button" className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => { setModalTarget("new"); setVisibleHours([1,2,3,4,5,6,7,8,9]); setOpenVals(true); }}>Valores</button>
               </div>
             </div>
             
@@ -452,32 +452,32 @@ export default function EmpresasPage() {
             
 
             <div className="flex gap-2">
-              <button className="flex-1 rounded-md py-2 bg-indigo-600 text-white hover:bg-indigo-700" onClick={create}>Salvar</button>
-              <button className="flex-1 rounded-md py-2 bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => setOpen(false)}>Cancelar</button>
+              <button className="flex-1 rounded-md py-2 bg-primary text-primary-foreground hover:opacity-90" onClick={create}>Salvar</button>
+              <button className="flex-1 rounded-md py-2 bg-muted text-foreground" onClick={() => setOpen(false)}>Cancelar</button>
             </div>
           </div>
         </div>
       )}
       {openDocs && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={() => setOpenDocs(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Documentos da empresa</div>
+          <div className="bg-surface text-foreground w-full max-w-xl rounded-lg p-4 space-y-3 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Documentos da empresa</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Nome do documento" value={modalTarget === "detail" ? docsDetailName : docName} onChange={(e) => modalTarget === "detail" ? setDocsDetailName(e.target.value) : setDocName(e.target.value)} />
-              <input className="border border-slate-300 rounded-md px-3 py-2 sm:col-span-2" type="file" ref={modalTarget === "detail" ? fileInputDetailRef : fileInputNewRef} onChange={(e) => modalTarget === "detail" ? setDocsDetailFile(e.target.files?.[0] || null) : setDocFile(e.target.files?.[0] || null)} />
+              <input className="border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Nome do documento" value={modalTarget === "detail" ? docsDetailName : docName} onChange={(e) => modalTarget === "detail" ? setDocsDetailName(e.target.value) : setDocName(e.target.value)} />
+              <input className="border border-border rounded-md px-3 py-2 sm:col-span-2 bg-background text-foreground" type="file" ref={modalTarget === "detail" ? fileInputDetailRef : fileInputNewRef} onChange={(e) => modalTarget === "detail" ? setDocsDetailFile(e.target.files?.[0] || null) : setDocFile(e.target.files?.[0] || null)} />
             </div>
             <div className="flex justify-end">
-              <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={() => addDocumentoTo(modalTarget === "detail" ? "detail" : "new")}>Enviar documento</button>
+              <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={() => addDocumentoTo(modalTarget === "detail" ? "detail" : "new")}>Enviar documento</button>
             </div>
             {!!(((modalTarget === "detail" ? detailDocs : newDocs) || []).length) && (
               <div className="space-y-1 max-h-64 overflow-auto">
                 {((modalTarget === "detail" ? detailDocs : newDocs) || []).map((d, i) => (
-                  <div key={i} className="border border-slate-200 rounded px-3 py-2">
+                  <div key={i} className="border border-border rounded px-3 py-2">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm text-slate-800 truncate mr-2">{d.nome}</div>
+                      <div className="text-sm text-foreground truncate mr-2">{d.nome}</div>
                       <div className="flex items-center gap-2">
                         <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 text-sm hover:underline">Abrir</a>
-                        <button className="text-slate-700 text-sm hover:underline" onClick={() => { setEditingDocIndex(i); setEditingDocName(d.nome); setEditingDocFile(null); }}>Editar</button>
+                        <button className="text-foreground text-sm hover:underline" onClick={() => { setEditingDocIndex(i); setEditingDocName(d.nome); setEditingDocFile(null); }}>Editar</button>
                         <button className="text-red-600 text-sm hover:underline" onClick={async () => {
                           try { if (storage) { const r = ref(storage, d.path || d.url); await deleteObject(r); } } catch {}
                           if (modalTarget === "detail" && detailForm && db) {
@@ -493,11 +493,11 @@ export default function EmpresasPage() {
                     </div>
                     {editingDocIndex === i && (
                       <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <input className="border border-slate-300 rounded-md px-3 py-2" placeholder="Nome do documento" value={editingDocName} onChange={(e) => setEditingDocName(e.target.value)} />
-                        <input className="border border-slate-300 rounded-md px-3 py-2 sm:col-span-2" type="file" onChange={(e) => setEditingDocFile(e.target.files?.[0] || null)} />
+                        <input className="border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Nome do documento" value={editingDocName} onChange={(e) => setEditingDocName(e.target.value)} />
+                        <input className="border border-border rounded-md px-3 py-2 sm:col-span-2 bg-background text-foreground" type="file" onChange={(e) => setEditingDocFile(e.target.files?.[0] || null)} />
                         <div className="sm:col-span-3 flex justify-end gap-2">
-                          <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); }}>Cancelar</button>
-                          <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={saveEditDoc}>Salvar alterações</button>
+                          <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => { setEditingDocIndex(null); setEditingDocName(""); setEditingDocFile(null); }}>Cancelar</button>
+                          <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={saveEditDoc}>Salvar alterações</button>
                         </div>
                       </div>
                     )}
@@ -506,7 +506,7 @@ export default function EmpresasPage() {
               </div>
             )}
             <div className="flex justify-end">
-              <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
+              <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={async () => {
                 if (modalTarget === "detail" && detailForm && db) {
                   const first = (detailForm.responsaveis && detailForm.responsaveis[0]) ? detailForm.responsaveis[0] : undefined;
                   const payload = buildPayloadEmpresa(detailForm, { contact: first?.nome, contactNumber: first?.numero });
@@ -522,12 +522,12 @@ export default function EmpresasPage() {
 
       {openResp && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={() => setOpenResp(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Responsáveis</div>
+          <div className="bg-surface text-foreground w-full max-w-xl rounded-lg p-4 space-y-3 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Responsáveis</div>
             {(((modalTarget === "detail" ? detailForm?.responsaveis : form.responsaveis) || [])).map((r, idx) => (
               <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Responsável" value={r.nome} onChange={(e) => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) }); }} />
-                <input className="w-full border border-slate-300 rounded-md px-3 py-2" placeholder="Número do responsável" inputMode="numeric" value={formatBrPhoneDisplay(r.numero || "")} onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 11); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
+                <input className="w-full border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Responsável" value={r.nome} onChange={(e) => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, nome: e.target.value } : x) }); }} />
+                <input className="w-full border border-border rounded-md px-3 py-2 bg-background text-foreground" placeholder="Número do responsável" inputMode="numeric" value={formatBrPhoneDisplay(r.numero || "")} onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 11); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: (prev!.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) })); else setForm({ ...form, responsaveis: (form.responsaveis || []).map((x, i) => i === idx ? { ...x, numero: v } : x) }); }} />
                 <div className="flex items-center justify-end">
                   <button
                     type="button"
@@ -548,8 +548,8 @@ export default function EmpresasPage() {
               </div>
             ))}
             <div className="flex justify-between">
-              <button className="px-3 py-2 rounded-md bg-slate-200 text-slate-900 hover:bg-slate-300" onClick={() => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: [...(prev!.responsaveis || []), { nome: "", numero: "" }] })); else setForm({ ...form, responsaveis: [...(form.responsaveis || []), { nome: "", numero: "" }] }); }}>Adicionar responsável</button>
-              <button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
+              <button className="px-3 py-2 rounded-md bg-muted text-foreground" onClick={() => { if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, responsaveis: [...(prev!.responsaveis || []), { nome: "", numero: "" }] })); else setForm({ ...form, responsaveis: [...(form.responsaveis || []), { nome: "", numero: "" }] }); }}>Adicionar responsável</button>
+              <button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={async () => {
                 if (modalTarget === "detail" && detailForm && db) {
                   const first = (detailForm.responsaveis && detailForm.responsaveis[0]) ? detailForm.responsaveis[0] : undefined;
                   const payload = buildPayloadEmpresa(detailForm, { contact: first?.nome, contactNumber: first?.numero });
@@ -565,10 +565,10 @@ export default function EmpresasPage() {
 
       {openVals && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]" onClick={() => setOpenVals(false)}>
-          <div className="bg-white w-full max-w-xl rounded-lg p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <div className="text-lg font-bold text-slate-900">Valores</div>
+          <div className="bg-surface text-foreground w-full max-w-xl rounded-lg p-4 space-y-3 max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-foreground">Valores</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="space-y-1"><div className="text-xs text-slate-600">Rastreador veicular</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.trackerInstallationRate) : money.trackerInstallationRate} onChange={modalTarget === "detail" ? handleCurrencyDetail("trackerInstallationRate") : handleCurrency("trackerInstallationRate")} /></div></div>
+              <div className="space-y-1"><div className="text-xs text-foreground">Rastreador veicular</div><div className="flex items-center"><span className="px-3 py-2 bg-muted border border-border rounded-l-md text-foreground">R$</span><input className="flex-1 border border-l-0 border-border rounded-r-md px-3 py-2 bg-background text-foreground" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.trackerInstallationRate) : money.trackerInstallationRate} onChange={modalTarget === "detail" ? handleCurrencyDetail("trackerInstallationRate") : handleCurrency("trackerInstallationRate")} /></div></div>
               {visibleHours.map((h) => {
                 const key = `itRate${h}h` as keyof Empresa;
                 const label = `${h}h`;
@@ -576,17 +576,17 @@ export default function EmpresasPage() {
                 const display = modalTarget === "detail" ? formatCurrency(source[key] as number | undefined) : money[key as string];
                 const onChange = modalTarget === "detail" ? handleCurrencyDetail(key) : handleCurrency(key);
                 return (
-                  <div key={h} className="space-y-1"><div className="text-xs text-slate-600">{label}</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={display} onChange={onChange} /></div></div>
+                  <div key={h} className="space-y-1"><div className="text-xs text-foreground">{label}</div><div className="flex items-center"><span className="px-3 py-2 bg-muted border border-border rounded-l-md text-foreground">R$</span><input className="flex-1 border border-l-0 border-border rounded-r-md px-3 py-2 bg-background text-foreground" inputMode="numeric" value={display} onChange={onChange} /></div></div>
                 );
               })}
               
-              <div className="space-y-1"><div className="text-xs text-slate-600">Deslocamento</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itMileage) : money.itMileage} onChange={modalTarget === "detail" ? handleCurrencyDetail("itMileage") : handleCurrency("itMileage")} /></div></div>
-              <div className="space-y-1"><div className="text-xs text-slate-600">Hora adicional</div><div className="flex items-center"><span className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-l-md text-slate-700">R$</span><input className="flex-1 border border-l-0 border-slate-300 rounded-r-md px-3 py-2" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itAdditionalHour) : money.itAdditionalHour} onChange={modalTarget === "detail" ? handleCurrencyDetail("itAdditionalHour") : handleCurrency("itAdditionalHour")} /></div></div>
-              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-slate-600">Tolerância (minutos) para adicional</div><input className="border border-slate-300 rounded-md px-3 py-2 w-full" inputMode="numeric" value={(modalTarget === "detail" ? (detailForm?.itToleranceMinutes ?? "") : (form.itToleranceMinutes ?? "")) as unknown as string} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, itToleranceMinutes: isFinite(n) ? n : undefined })); else setForm((prev) => ({ ...prev, itToleranceMinutes: isFinite(n) ? n : undefined })); }} /></div>
+              <div className="space-y-1"><div className="text-xs text-foreground">Deslocamento</div><div className="flex items-center"><span className="px-3 py-2 bg-muted border border-border rounded-l-md text-foreground">R$</span><input className="flex-1 border border-l-0 border-border rounded-r-md px-3 py-2 bg-background text-foreground" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itMileage) : money.itMileage} onChange={modalTarget === "detail" ? handleCurrencyDetail("itMileage") : handleCurrency("itMileage")} /></div></div>
+              <div className="space-y-1"><div className="text-xs text-foreground">Hora adicional</div><div className="flex items-center"><span className="px-3 py-2 bg-muted border border-border rounded-l-md text-foreground">R$</span><input className="flex-1 border border-l-0 border-border rounded-r-md px-3 py-2 bg-background text-foreground" inputMode="numeric" value={modalTarget === "detail" ? formatCurrency(detailForm?.itAdditionalHour) : money.itAdditionalHour} onChange={modalTarget === "detail" ? handleCurrencyDetail("itAdditionalHour") : handleCurrency("itAdditionalHour")} /></div></div>
+              <div className="space-y-1 sm:col-span-2"><div className="text-xs text-foreground">Tolerância (minutos) para adicional</div><input className="border border-border rounded-md px-3 py-2 w-full bg-background text-foreground" inputMode="numeric" value={(modalTarget === "detail" ? (detailForm?.itToleranceMinutes ?? "") : (form.itToleranceMinutes ?? "")) as unknown as string} onChange={(e) => { const n = Number(e.target.value.replace(/\D/g, "")); if (modalTarget === "detail") setDetailForm((prev) => ({ ...prev!, itToleranceMinutes: isFinite(n) ? n : undefined })); else setForm((prev) => ({ ...prev, itToleranceMinutes: isFinite(n) ? n : undefined })); }} /></div>
             </div>
-            <div className="text-xs text-slate-600 mt-1">9h equivale à diária (8h de serviço + 1h de almoço). Acima de 9h utiliza hora adicional.</div>
+            <div className="text-xs text-foreground mt-1">9h equivale à diária (8h de serviço + 1h de almoço). Acima de 9h utiliza hora adicional.</div>
             
-            <div className="flex justify-end"><button className="px-3 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={async () => {
+            <div className="flex justify-end"><button className="px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90" onClick={async () => {
               if (modalTarget === "detail") {
                 if (!db || !detailForm) return;
                 const first = (detailForm.responsaveis && detailForm.responsaveis[0]) ? detailForm.responsaveis[0] : undefined;

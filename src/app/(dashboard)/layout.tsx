@@ -26,6 +26,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
   return (
     <AuthGuard>
+      <script dangerouslySetInnerHTML={{ __html: `
+        (function(){
+          try {
+            var pref = localStorage.getItem('theme');
+            var isDark = pref ? pref === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.classList.toggle('dark', !!isDark);
+          } catch {}
+        })();
+      ` }} />
       <div className="min-h-screen flex bg-background text-foreground">
         <Sidebar open={open} onClose={() => setOpen(false)} />
         <main className="flex-1 p-4 sm:p-6">

@@ -12,9 +12,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    try { document.documentElement.classList.remove("dark"); } catch {}
     if (!auth) return;
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) router.replace("/chamados");
+      if (user) router.replace("/dashboard");
     });
     return () => unsub();
   }, [router]);
@@ -26,7 +27,21 @@ export default function LoginPage() {
     try {
       if (!auth) throw new Error("Sem configuração");
       await signInWithEmailAndPassword(auth, email, password);
-      router.replace("/chamados");
+      try {
+        const { getDocs, collection } = await import("firebase/firestore");
+        const regsSnap = await getDocs(collection((await import("@/lib/firebase")).db, "registrations"));
+        const empSnap = await getDocs(collection((await import("@/lib/firebase")).db, "empresas"));
+        const chaSnap = await getDocs(collection((await import("@/lib/firebase")).db, "chamados"));
+        const regs = regsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+        const emps = empSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+        const chas = chaSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+        try {
+          sessionStorage.setItem("prefetch_registrations", JSON.stringify(regs));
+          sessionStorage.setItem("prefetch_empresas", JSON.stringify(emps));
+          sessionStorage.setItem("prefetch_chamados", JSON.stringify(chas));
+        } catch {}
+      } catch {}
+      router.replace("/dashboard");
     } catch (err: unknown) {
       let message = "Falha no login";
       const code = (err as { code?: string })?.code || "";

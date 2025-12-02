@@ -56,7 +56,11 @@ export default function MapaTecnicosPage() {
     if (!el) return;
     if (el._leaflet_id) return;
     const m = L.map(el).setView([center.lat, center.lng], 6);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "&copy; OpenStreetMap" }).addTo(m);
+    const prefersDark = document.documentElement.classList.contains("dark");
+    const tiles = prefersDark
+      ? "https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"
+      : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    L.tileLayer(tiles, { attribution: "&copy; OpenStreetMap & Stadia Maps" }).addTo(m);
     setTimeout(() => { setMap(m); setMapReady(true); }, 0);
   }, [mapReady, mapDivId, center.lat, center.lng]);
 

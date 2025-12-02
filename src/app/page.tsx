@@ -12,7 +12,7 @@ export default function Home() {
       return;
     }
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) router.replace("/chamados");
+      if (user) router.replace("/dashboard");
       else router.replace("/login");
     });
     return () => unsub();

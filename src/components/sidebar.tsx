@@ -45,6 +45,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
             <Link
               key={l.href}
               href={l.href}
+              prefetch={false}
               className={clsx(
                 "px-4 py-2 hover:bg-muted",
                 pathname?.startsWith(l.href) ? "bg-muted font-semibold" : ""
@@ -68,6 +69,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
                 <Link
                   key={l.href}
                   href={l.href}
+                  prefetch={false}
                   className={clsx(
                     "px-4 py-2 hover:bg-muted",
                     pathname?.startsWith(l.href) ? "bg-muted font-semibold" : ""
