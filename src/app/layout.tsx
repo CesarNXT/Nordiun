@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthGuard } from "@/components/auth-guard";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -29,7 +30,7 @@ export default function RootLayout({
             } catch {}
           })();
         ` }} />
-        {children}
+        <AuthGuard>{children}</AuthGuard>
       </body>
     </html>
   );

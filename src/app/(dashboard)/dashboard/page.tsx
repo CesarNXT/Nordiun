@@ -77,41 +77,40 @@ export default function DashboardPage() {
     <div className="space-y-4">
       <div className="text-2xl font-bold">Dashboard</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200 rounded-md p-4">
-          <div className="text-sm text-slate-600">Técnicos</div>
-          <div className="text-3xl font-bold">{tecnicosTotal}</div>
-          <div className="text-sm text-slate-700 mt-1">Ativos: {tecnicosAtivos}</div>
-          <div className="text-sm text-slate-700">Novos no mês: {tecnicosNovosMes}</div>
+        <div className="bg-surface border border-border rounded-md p-4">
+          <div className="text-sm text-foreground">Técnicos</div>
+          <div className="text-3xl font-bold text-foreground">{tecnicosTotal}</div>
+          <div className="text-sm text-foreground mt-1">Ativos: {tecnicosAtivos}</div>
+          <div className="text-sm text-foreground">Novos no mês: {tecnicosNovosMes}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-md p-4">
-          <div className="text-sm text-slate-600">Empresas</div>
-          <div className="text-3xl font-bold">{empresas.length}</div>
+        <div className="bg-surface border border-border rounded-md p-4">
+          <div className="text-sm text-foreground">Empresas</div>
+          <div className="text-3xl font-bold text-foreground">{empresas.length}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-md p-4">
-          <div className="text-sm text-slate-600">Chamados</div>
-          <div className="text-3xl font-bold">{chamadosTotal}</div>
-          <div className="text-sm text-slate-700 mt-1">Agendados: {chamadosAgendados}</div>
-          <div className="text-sm text-slate-700">Em andamento: {chamadosAndamento}</div>
-          <div className="text-sm text-slate-700">Reagendados: {chamadosReagendados}</div>
+        <div className="bg-surface border border-border rounded-md p-4">
+          <div className="text-sm text-foreground">Chamados</div>
+          <div className="text-3xl font-bold text-foreground">{chamadosTotal}</div>
+          <div className="text-sm text-foreground mt-1">Agendados: {chamadosAgendados}</div>
+          <div className="text-sm text-foreground">Em andamento: {chamadosAndamento}</div>
+          <div className="text-sm text-foreground">Reagendados: {chamadosReagendados}</div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-md p-4">
-          <div className="text-sm text-slate-600">Concluídos hoje</div>
-          <div className="text-3xl font-bold">{chamadosConcluidosHoje}</div>
+        <div className="bg-surface border border-border rounded-md p-4">
+          <div className="text-sm text-foreground">Concluídos hoje</div>
+          <div className="text-3xl font-bold text-foreground">{chamadosConcluidosHoje}</div>
         </div>
       </div>
-      <div className="bg-white border border-slate-200 rounded-md p-4">
-        <div className="text-lg font-semibold">Chamados recentes</div>
+      <div className="bg-surface border border-border rounded-md p-4">
+        <div className="text-lg font-semibold text-foreground">Chamados recentes</div>
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {recentesChamados.map((c) => (
-            <div key={c.id} className="border border-slate-200 rounded p-3">
-              <div className="text-sm text-slate-700">{c.status || "—"}</div>
-              <div className="text-sm text-slate-900">{c.appointmentDate ? new Date(c.appointmentDate).toLocaleDateString("pt-BR") : ""}</div>
+            <div key={c.id} className="border border-border rounded p-3 bg-background">
+              <div className="text-sm text-foreground">{c.status || "—"}</div>
+              <div className="text-sm text-foreground">{c.appointmentDate ? new Date(c.appointmentDate).toLocaleDateString("pt-BR") : ""}</div>
             </div>
           ))}
-          {!recentesChamados.length && <div className="text-sm text-slate-700">Sem chamados</div>}
+          {!recentesChamados.length && <div className="text-sm text-foreground">Sem chamados</div>}
         </div>
       </div>
     </div>
   );
 }
-

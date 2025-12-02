@@ -1,6 +1,7 @@
 "use client";
 import { ReactNode, useEffect, useState } from "react";
 import { Sidebar } from "@/components/sidebar";
+import { Sun, Moon } from "lucide-react";
 import { AuthGuard } from "@/components/auth-guard";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -32,7 +33,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <button className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={() => setOpen(true)} aria-label="Abrir menu">☰</button>
             <div className="flex items-center gap-2">
               <div className="font-bold">Nordiun</div>
-              <button className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={toggleTheme}>{isDark ? "Tema escuro" : "Tema claro"}</button>
+              <button className="px-3 py-2 rounded-md border border-border text-foreground hover:bg-muted" onClick={toggleTheme} aria-label="Alternar tema">{isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
             </div>
           </div>
           {children}

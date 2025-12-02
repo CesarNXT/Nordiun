@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
 import { useEffect, useState } from "react";
+import { Sun, Moon } from "lucide-react";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
@@ -37,7 +38,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
       <aside className="hidden sm:block w-64 border-r border-border bg-surface text-foreground">
         <div className="p-4 font-bold flex items-center justify-between">
           <span>Nordiun</span>
-          <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme}>{isDark ? "Escuro" : "Claro"}</button>
+          <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme} aria-label="Alternar tema">{isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
         </div>
         <nav className="flex flex-col">
           {links.map((l) => (
@@ -60,7 +61,7 @@ export function Sidebar({ open, onClose }: { open?: boolean; onClose?: () => voi
           <div className="w-64 bg-surface text-foreground border-r border-border h-full" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 font-bold flex items-center justify-between">
               <span>Nordiun</span>
-              <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme}>{isDark ? "Escuro" : "Claro"}</button>
+              <button className="px-2 py-1 rounded-md border border-border hover:bg-muted text-sm" onClick={toggleTheme} aria-label="Alternar tema">{isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}</button>
             </div>
             <nav className="flex flex-col">
               {links.map((l) => (
