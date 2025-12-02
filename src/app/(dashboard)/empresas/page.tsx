@@ -2,12 +2,14 @@
 import { useEffect, useRef, useState } from "react";
  
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, updateDoc, deleteDoc, doc, CollectionReference, onSnapshot, query, orderBy, getDocs } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, CollectionReference, query, orderBy, getDocs } from "firebase/firestore";
+import { useAppData } from "@/context/app-data";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import type { Empresa } from "@/types";
 
 export default function EmpresasPage() {
-  const [items, setItems] = useState<(Empresa & { id: string })[]>([]);
+  const { empresas: ctxEmpresas } = useAppData();
+  const items = ((ctxEmpresas as unknown as (Empresa & { id: string })[]) || []).map((raw) => sanitizeMoney(raw));
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<(Empresa & { id: string }) | null>(null);
   const [detailForm, setDetailForm] = useState<(Empresa & { id: string }) | null>(null);
@@ -208,41 +210,7 @@ export default function EmpresasPage() {
     };
   }
 
-  useEffect(() => {
-    if (!db) return;
-    const col = collection(db, "empresas") as CollectionReference<Empresa>;
-    const q = query(col, orderBy("name"));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => {
-        const raw = d.data() as Empresa;
-        const v = raw.valores;
-        if (v) {
-          raw.itRate1h = v.itRate1h;
-          raw.itRate2h = v.itRate2h;
-          raw.trackerInstallationRate = v.trackerInstallationRate;
-          raw.itRate3h = v.itRate3h;
-          raw.itRate4h = v.itRate4h;
-          raw.itRate5h = v.itRate5h;
-          raw.itRate6h = v.itRate6h;
-          raw.itRate7h = v.itRate7h;
-          raw.itRate8h = v.itRate8h;
-          raw.itRate9h = v.itRate9h;
-          raw.itRate10h = v.itRate10h;
-          raw.itRate11h = v.itRate11h;
-          raw.itRate12h = v.itRate12h;
-          raw.itHalfDaily = v.itHalfDaily;
-          raw.itDaily = v.itDaily;
-          raw.itMileage = v.itMileage;
-          raw.itAdditionalHour = v.itAdditionalHour;
-          raw.itToleranceMinutes = v.itToleranceMinutes;
-        }
-        const data = sanitizeMoney(raw);
-        return { id: d.id, ...data };
-      });
-      setItems(list);
-    });
-    return () => unsub();
-  }, []);
+  
 
   // visibleHours é inicializado ao abrir o modal de Valores
 
@@ -511,7 +479,6 @@ export default function EmpresasPage() {
                   const first = (detailForm.responsaveis && detailForm.responsaveis[0]) ? detailForm.responsaveis[0] : undefined;
                   const payload = buildPayloadEmpresa(detailForm, { contact: first?.nome, contactNumber: first?.numero });
                   await updateDoc(doc(db, "empresas", detailForm.id), payload);
-                  setItems((prev) => prev.map((x) => (x.id === detailForm.id ? { ...x, ...payload, id: x.id } : x)));
                 }
                 setOpenDocs(false);
               }}>Salvar</button>
@@ -592,7 +559,6 @@ export default function EmpresasPage() {
                 const first = (detailForm.responsaveis && detailForm.responsaveis[0]) ? detailForm.responsaveis[0] : undefined;
                 const payload = buildPayloadEmpresa(detailForm, { contact: first?.nome, contactNumber: first?.numero });
                 await updateDoc(doc(db, "empresas", detailForm.id), payload);
-                setItems((prev) => prev.map((x) => (x.id === detailForm.id ? { ...x, ...payload, id: x.id } : x)));
               }
               setOpenVals(false);
             }}>Salvar</button></div>
